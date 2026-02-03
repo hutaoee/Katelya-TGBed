@@ -9,6 +9,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css">
   <!-- PDF.js -->
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <!-- Artplayer 视频播放器 -->
+  <script src="https://cdn.jsdelivr.net/npm/artplayer@5.1.7/dist/artplayer.js"></script>
+  <!-- APlayer 音频播放器 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer@1.10.1/dist/APlayer.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/aplayer@1.10.1/dist/APlayer.min.js"></script>
   <style>
     :root {
       --primary-color: #8a4bff;
@@ -187,80 +192,89 @@
       object-fit: contain;
     }
 
-    /* 视频预览 */
-    .preview-video {
-      max-width: 100%;
-      max-height: 70vh;
-      background: #000;
-      border-radius: 8px;
-    }
-
+    /* 视频预览 - Artplayer */
     .video-container {
       width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background: #000;
-      border-radius: 12px;
+      max-width: 100%;
+      position: relative;
+    }
+
+    #artplayer-container {
+      width: 100%;
+      height: 480px;
+      max-height: 70vh;
+      border-radius: 8px;
       overflow: hidden;
+      background: #000;
     }
 
     .video-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       padding: 40px;
-      color: #666;
+      color: #f56c6c;
+      min-height: 200px;
     }
 
     .video-error i {
-      font-size: 4em;
-      color: #ddd;
+      font-size: 3em;
       margin-bottom: 16px;
     }
 
-    /* 音频预览 */
+    /* 音频预览 - APlayer */
     .preview-audio-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       text-align: center;
-      padding: 40px;
+      padding: 40px 20px;
       width: 100%;
     }
 
-    .audio-visualizer {
+    .audio-cover {
       width: 120px;
       height: 120px;
-      background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
       border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 24px;
-      box-shadow: 0 8px 32px rgba(138, 75, 255, 0.3);
-      animation: pulse 2s ease-in-out infinite;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 24px rgba(138, 75, 255, 0.2);
     }
 
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+    .audio-cover.playing {
+      animation: rotate 4s linear infinite;
     }
 
-    .audio-visualizer.playing {
-      animation: pulse 0.8s ease-in-out infinite;
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
-    .audio-visualizer i {
+    .audio-cover i {
       font-size: 3em;
       color: white;
     }
 
-    .audio-icon {
-      font-size: 4em;
-      color: var(--primary-color);
-      margin-bottom: 20px;
+    #aplayer-container {
+      width: 100%;
+      max-width: 400px;
+      margin-top: 20px;
     }
 
-    .preview-audio {
-      width: 100%;
-      max-width: 500px;
-      margin-top: 20px;
+    /* APlayer 主题适配 */
+    .aplayer {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+      border-radius: 12px !important;
+    }
+
+    .aplayer .aplayer-lrc {
+      display: none;
     }
 
     /* PDF 预览 */
@@ -523,7 +537,8 @@
         max-height: 50vh;
       }
 
-      .preview-video {
+      #artplayer-container {
+        height: 280px;
         max-height: 50vh;
       }
 
@@ -619,8 +634,9 @@
         max-height: 40vh;
       }
 
-      .preview-video {
-        max-height: 40vh;
+      #artplayer-container {
+        height: 220px;
+        max-height: 45vh;
       }
 
       .preview-pdf,
@@ -773,20 +789,9 @@
              @load="onImageLoad"
              @error="onLoadError">
 
-        <!-- 视频预览 -->
+        <!-- 视频预览 - Artplayer -->
         <div v-else-if="previewType === 'video'" class="video-container">
-          <video v-if="!videoError"
-                 ref="videoPlayer"
-                 :src="fileUrl" 
-                 class="preview-video" 
-                 controls
-                 playsinline
-                 preload="metadata"
-                 @loadedmetadata="onVideoLoaded"
-                 @canplay="onVideoReady"
-                 @error="onVideoError">
-            您的浏览器不支持视频播放
-          </video>
+          <div v-if="!videoError" id="artplayer-container" ref="artplayerContainer"></div>
           <div v-else class="video-error">
             <i class="fas fa-exclamation-triangle"></i>
             <h3>视频加载失败</h3>
@@ -797,32 +802,17 @@
           </div>
         </div>
 
-        <!-- 音频预览 -->
+        <!-- 音频预览 - APlayer -->
         <div v-else-if="previewType === 'audio'" class="preview-audio-container">
-          <div class="audio-visualizer" :class="{ playing: isAudioPlaying }">
+          <div class="audio-cover" :class="{ playing: isAudioPlaying }">
             <i class="fas fa-music"></i>
           </div>
           <h3 style="margin-bottom: 8px; color: #333;">{{ fileName }}</h3>
           <p style="color: #999; font-size: 0.85em; margin-bottom: 16px;">{{ fileType }} 音频文件</p>
-          <audio ref="audioPlayer"
-                 :src="fileUrl" 
-                 class="preview-audio" 
-                 controls
-                 preload="metadata"
-                 @loadedmetadata="onAudioLoaded"
-                 @canplay="onAudioReady"
-                 @play="isAudioPlaying = true"
-                 @pause="isAudioPlaying = false"
-                 @ended="isAudioPlaying = false"
-                 @error="onAudioError">
-            您的浏览器不支持音频播放
-          </audio>
+          <div id="aplayer-container" ref="aplayerContainer"></div>
           <div v-if="audioError" style="margin-top: 16px; color: #f56c6c;">
             <i class="fas fa-exclamation-circle"></i> 音频加载失败，请尝试下载后播放
           </div>
-          <p v-else style="margin-top: 16px; color: #999; font-size: 0.85em;">
-            <i class="fas fa-info-circle"></i> 如无法播放，请尝试下载后使用本地播放器
-          </p>
         </div>
 
         <!-- PDF 预览 -->
@@ -902,7 +892,9 @@
         nsfwModel: null,
         videoError: false,
         audioError: false,
-        isAudioPlaying: false
+        isAudioPlaying: false,
+        artplayer: null,
+        aplayer: null
       },
       computed: {
         fileIcon() {
@@ -983,9 +975,18 @@
           // 如果是文本，获取内容
           if (this.previewType === 'text') {
             await this.loadTextContent();
-          } else if (this.previewType === 'video' || this.previewType === 'audio') {
-            // 视频和音频需要先显示播放器，再由播放器自己处理加载
+          } else if (this.previewType === 'video') {
+            // 视频使用 Artplayer
             this.loading = false;
+            this.$nextTick(() => {
+              this.initArtplayer();
+            });
+          } else if (this.previewType === 'audio') {
+            // 音频使用 APlayer
+            this.loading = false;
+            this.$nextTick(() => {
+              this.initAPlayer();
+            });
           } else if (this.previewType === 'unsupported') {
             this.loading = false;
           }
@@ -1036,6 +1037,141 @@
         onLoadError() {
           this.loading = false;
           this.previewType = 'unsupported';
+        },
+
+        // 初始化 Artplayer 视频播放器
+        initArtplayer() {
+          const container = this.$refs.artplayerContainer;
+          if (!container) {
+            console.error('Artplayer container not found');
+            this.videoError = true;
+            return;
+          }
+
+          try {
+            // 获取视频类型
+            const ext = this.fileName.split('.').pop().toLowerCase();
+            const mimeTypes = {
+              'mp4': 'video/mp4',
+              'webm': 'video/webm',
+              'ogg': 'video/ogg',
+              'mov': 'video/mp4',
+              'avi': 'video/x-msvideo',
+              'mkv': 'video/x-matroska',
+              'm4v': 'video/mp4'
+            };
+            const mimeType = mimeTypes[ext] || 'video/mp4';
+
+            this.artplayer = new Artplayer({
+              container: container,
+              url: this.fileUrl,
+              type: mimeType,
+              volume: 0.7,
+              isLive: false,
+              muted: false,
+              autoplay: false,
+              pip: true,
+              autoSize: false,
+              autoMini: false,
+              screenshot: true,
+              setting: true,
+              loop: false,
+              flip: true,
+              playbackRate: true,
+              aspectRatio: true,
+              fullscreen: true,
+              fullscreenWeb: true,
+              subtitleOffset: false,
+              miniProgressBar: true,
+              mutex: true,
+              backdrop: true,
+              playsInline: true,
+              autoPlayback: true,
+              airplay: true,
+              theme: '#8a4bff',
+              lang: navigator.language.toLowerCase().includes('zh') ? 'zh-cn' : 'en',
+              moreVideoAttr: {
+                crossOrigin: 'anonymous'
+              }
+            });
+
+            // 监听错误事件
+            this.artplayer.on('error', (error) => {
+              console.error('Artplayer error:', error);
+              this.videoError = true;
+            });
+
+            // 监听准备就绪
+            this.artplayer.on('ready', () => {
+              console.log('Artplayer ready');
+            });
+
+          } catch (e) {
+            console.error('Artplayer init error:', e);
+            this.videoError = true;
+          }
+        },
+
+        // 初始化 APlayer 音频播放器
+        initAPlayer() {
+          const container = this.$refs.aplayerContainer;
+          if (!container) {
+            console.error('APlayer container not found');
+            this.audioError = true;
+            return;
+          }
+
+          try {
+            this.aplayer = new APlayer({
+              container: container,
+              audio: [{
+                name: this.fileName,
+                artist: '未知艺术家',
+                url: this.fileUrl,
+                cover: ''
+              }],
+              theme: '#8a4bff',
+              loop: 'none',
+              preload: 'auto',
+              volume: 0.7,
+              mutex: true,
+              listFolded: true
+            });
+
+            // 监听播放状态
+            this.aplayer.on('play', () => {
+              this.isAudioPlaying = true;
+            });
+
+            this.aplayer.on('pause', () => {
+              this.isAudioPlaying = false;
+            });
+
+            this.aplayer.on('ended', () => {
+              this.isAudioPlaying = false;
+            });
+
+            this.aplayer.on('error', () => {
+              console.error('APlayer error');
+              this.audioError = true;
+            });
+
+          } catch (e) {
+            console.error('APlayer init error:', e);
+            this.audioError = true;
+          }
+        },
+
+        // 销毁播放器
+        destroyPlayers() {
+          if (this.artplayer) {
+            this.artplayer.destroy();
+            this.artplayer = null;
+          }
+          if (this.aplayer) {
+            this.aplayer.destroy();
+            this.aplayer = null;
+          }
         },
 
         onVideoLoaded() {
@@ -1116,6 +1252,9 @@
         const isAuth = await this.checkAuth();
         if (!isAuth) return;
         this.init();
+      },
+      beforeDestroy() {
+        this.destroyPlayers();
       }
     });
   </script>
