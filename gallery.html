@@ -1025,7 +1025,14 @@
             }
 
             const result = await response.json();
-            this.images = (result.keys || []).map(img => ({
+            const invalidPrefixes = ['session:', 'chunk:', 'upload:', 'temp:'];
+            const filtered = (result.keys || []).filter(img => {
+              if (!img.name) return false;
+              if (invalidPrefixes.some(prefix => img.name.startsWith(prefix))) return false;
+              const metadata = img.metadata || {};
+              return metadata.fileName && metadata.TimeStamp !== undefined && metadata.TimeStamp !== null;
+            });
+            this.images = filtered.map(img => ({
               ...img,
               selected: false,
               metadata: {
@@ -1050,7 +1057,14 @@
               credentials: 'include'
             });
             const result = await response.json();
-            const newImages = (result.keys || []).map(img => ({
+            const invalidPrefixes = ['session:', 'chunk:', 'upload:', 'temp:'];
+            const filtered = (result.keys || []).filter(img => {
+              if (!img.name) return false;
+              if (invalidPrefixes.some(prefix => img.name.startsWith(prefix))) return false;
+              const metadata = img.metadata || {};
+              return metadata.fileName && metadata.TimeStamp !== undefined && metadata.TimeStamp !== null;
+            });
+            const newImages = filtered.map(img => ({
               ...img,
               selected: false,
               metadata: {

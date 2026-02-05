@@ -27,7 +27,7 @@ export async function onRequestPost(context) {
     }
 
     const body = await request.json();
-    const { fileName, fileSize, fileType, totalChunks } = body;
+    const { fileName, fileSize, fileType, totalChunks, storageMode } = body;
 
     // 验证参数
     if (!fileName || !fileSize || !totalChunks) {
@@ -48,12 +48,14 @@ export async function onRequestPost(context) {
     const uploadId = generateUploadId();
     
     // 存储上传任务信息
+    const normalizedStorage = storageMode === 'r2' ? 'r2' : 'telegram';
     const uploadTask = {
       uploadId,
       fileName,
       fileSize,
       fileType,
       totalChunks,
+      storageMode: normalizedStorage,
       uploadedChunks: [],
       createdAt: Date.now(),
       status: 'pending'

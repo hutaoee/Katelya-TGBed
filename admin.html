@@ -672,7 +672,13 @@
           fetch(url, opts)
             .then(r => r.json())
             .then(result => {
-          const files = (result.keys || []).filter(file => !file.name?.startsWith('session:'));
+          const invalidPrefixes = ['session:', 'chunk:', 'upload:', 'temp:'];
+          const files = (result.keys || []).filter(file => {
+            if (!file.name) return false;
+            if (invalidPrefixes.some(prefix => file.name.startsWith(prefix))) return false;
+            const metadata = file.metadata || {};
+            return metadata.fileName && metadata.TimeStamp !== undefined && metadata.TimeStamp !== null;
+          });
               const mapped = files.map(file => ({
                 ...file,
                 selected: false,
@@ -860,7 +866,13 @@
           fetch("./api/manage/list?limit=100", { method: 'GET', credentials: 'include' })
             .then(response => response.json())
             .then(result => {
-              const files = (result.keys || []).filter(file => !file.name?.startsWith('session:'));
+              const invalidPrefixes = ['session:', 'chunk:', 'upload:', 'temp:'];
+              const files = (result.keys || []).filter(file => {
+                if (!file.name) return false;
+                if (invalidPrefixes.some(prefix => file.name.startsWith(prefix))) return false;
+                const metadata = file.metadata || {};
+                return metadata.fileName && metadata.TimeStamp !== undefined && metadata.TimeStamp !== null;
+              });
               this.tableData = files.map(file => ({
                 ...file,
                 selected: false,
@@ -1466,7 +1478,13 @@
           .then(response => response.json())
           .then(result => {
             console.log("result: ", result);
-            const files = (result.keys || []).filter(file => !file.name?.startsWith('session:'));
+            const invalidPrefixes = ['session:', 'chunk:', 'upload:', 'temp:'];
+            const files = (result.keys || []).filter(file => {
+              if (!file.name) return false;
+              if (invalidPrefixes.some(prefix => file.name.startsWith(prefix))) return false;
+              const metadata = file.metadata || {};
+              return metadata.fileName && metadata.TimeStamp !== undefined && metadata.TimeStamp !== null;
+            });
             this.nextCursor = result.list_complete ? null : result.cursor;
             this.tableData = files.map(file => ({
               ...file,

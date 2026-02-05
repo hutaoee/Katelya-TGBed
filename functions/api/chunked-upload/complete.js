@@ -68,21 +68,38 @@ export async function onRequestPost(context) {
     const completeFile = new Blob(chunks, { type: taskData.fileType });
     const file = new File([completeFile], taskData.fileName, { type: taskData.fileType });
 
-    // 上传到 Telegram
-    const result = await uploadToTelegram(file, env);
-
-    if (!result.success) {
-      return new Response(JSON.stringify({ error: result.error }), { 
-        status: 500, 
-        headers: { 'Content-Type': 'application/json' } 
-      });
-    }
-
     // 获取文件扩展名
     const fileExtension = taskData.fileName.split('.').pop().toLowerCase();
 
+    let fileKey = null;
+    let storageType = taskData.storageMode === 'r2' ? 'r2' : 'telegram';
+
+    // 优先根据 storageMode 上传到 R2
+    if (storageType === 'r2') {
+      if (!env.R2_BUCKET) {
+        return new Response(JSON.stringify({ error: 'R2 未配置，无法完成上传' }), { 
+          status: 500, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
+      const uploadResult = await uploadToR2(file, fileExtension, env);
+      fileKey = uploadResult.fileKey;
+      storageType = 'r2';
+    } else {
+      // 上传到 Telegram
+      const result = await uploadToTelegram(file, env);
+
+      if (!result.success) {
+        return new Response(JSON.stringify({ error: result.error }), { 
+          status: 500, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
+      fileKey = `${result.fileId}.${fileExtension}`;
+      taskData.telegramMessageId = result.messageId || taskData.telegramMessageId;
+    }
+
     // 保存文件信息到 KV
-    const fileKey = `${result.fileId}.${fileExtension}`;
     await env.img_url.put(fileKey, "", {
       metadata: {
         TimeStamp: Date.now(),
@@ -92,7 +109,10 @@ export async function onRequestPost(context) {
         fileName: taskData.fileName,
         fileSize: taskData.fileSize,
         chunked: true,
-        totalChunks: taskData.totalChunks
+        totalChunks: taskData.totalChunks,
+        storageType,
+        r2Key: storageType === 'r2' ? fileKey.replace(/^r2:/, '') : undefined,
+        telegramMessageId: storageType === 'telegram' ? taskData.telegramMessageId : undefined
       }
     });
 
@@ -179,16 +199,34 @@ async function uploadToTelegram(file, env) {
         );
         const docData = await docResponse.json();
         if (docResponse.ok && docData.ok) {
-          return { success: true, fileId: getFileId(docData) };
+          return { success: true, fileId: getFileId(docData), messageId: docData?.result?.message_id };
         }
       }
       return { success: false, error: data.description || 'Upload failed' };
     }
 
-    return { success: true, fileId: getFileId(data) };
+    return { success: true, fileId: getFileId(data), messageId: data?.result?.message_id };
   } catch (error) {
     return { success: false, error: error.message };
   }
+}
+
+async function uploadToR2(file, fileExtension, env) {
+  const fileId = `r2_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const objectKey = `${fileId}.${fileExtension}`;
+  const arrayBuffer = await file.arrayBuffer();
+
+  await env.R2_BUCKET.put(objectKey, arrayBuffer, {
+    httpMetadata: {
+      contentType: file.type || 'application/octet-stream'
+    },
+    customMetadata: {
+      fileName: file.name,
+      uploadTime: Date.now().toString()
+    }
+  });
+
+  return { fileKey: `r2:${objectKey}` };
 }
 
 function getFileId(response) {

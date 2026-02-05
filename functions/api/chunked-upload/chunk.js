@@ -54,7 +54,13 @@ export async function onRequestPost(context) {
     // 将分片数据存储到 KV（临时存储）
     const chunkArrayBuffer = await chunk.arrayBuffer();
     await env.img_url.put(`chunk:${uploadId}:${chunkIndex}`, chunkArrayBuffer, {
-      expirationTtl: 3600
+      expirationTtl: 3600,
+      metadata: {
+        type: 'chunk',
+        uploadId,
+        chunkIndex,
+        createdAt: Date.now()
+      }
     });
 
     // 更新任务状态

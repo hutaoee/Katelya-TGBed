@@ -21,8 +21,17 @@ export async function onRequestPost(context) {
         // 获取存储模式 - 默认使用 telegram
         const storageMode = formData.get('storageMode') || 'telegram';
 
-        // 检查是否选择了 R2 且 R2 可用
-        if (storageMode === 'r2' && env.R2_BUCKET) {
+        // 检查是否选择了 R2
+        if (storageMode === 'r2') {
+            if (!env.R2_BUCKET) {
+                return new Response(
+                    JSON.stringify({ error: 'R2 未配置或未启用，无法上传' }),
+                    {
+                        status: 500,
+                        headers: { 'Content-Type': 'application/json' }
+                    }
+                );
+            }
             return await uploadToR2(uploadFile, fileName, fileExtension, env);
         }
 
@@ -53,6 +62,7 @@ export async function onRequestPost(context) {
         }
 
         const fileId = getFileId(result.data);
+        const messageId = result.messageId || result.data?.result?.message_id;
 
         if (!fileId) {
             throw new Error('Failed to get file ID');
@@ -68,6 +78,8 @@ export async function onRequestPost(context) {
                     liked: false,
                     fileName: fileName,
                     fileSize: uploadFile.size,
+                    storageType: 'telegram',
+                    telegramMessageId: messageId || undefined,
                 }
             });
         }
@@ -116,7 +128,7 @@ async function sendToTelegram(formData, apiEndpoint, env, retryCount = 0) {
         const responseData = await response.json();
 
         if (response.ok) {
-            return { success: true, data: responseData };
+            return { success: true, data: responseData, messageId: responseData?.result?.message_id };
         }
 
         // 图片上传失败时转为文档方式重试
