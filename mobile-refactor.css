@@ -139,6 +139,7 @@ html[data-theme="dark"] {
     justify-content: stretch !important;
     align-items: stretch;
     gap: 8px !important;
+    position: relative;
     padding-bottom: 0;
   }
 
@@ -150,11 +151,13 @@ html[data-theme="dark"] {
 
   .nav-links .theme-toggle-btn {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    min-height: 36px;
-    padding: 7px 11px;
+    top: -42px;
+    right: 0;
+    min-height: 34px;
+    padding: 6px 10px;
     margin: 0;
+    border-radius: 999px !important;
+    white-space: nowrap;
     z-index: 3;
   }
 
@@ -441,10 +444,11 @@ html[data-theme="dark"] {
     order: 4;
     width: 100%;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-start !important;
     flex-wrap: wrap !important;
     gap: 6px !important;
+    row-gap: 8px !important;
     margin-top: 2px !important;
     padding-bottom: 0;
   }
@@ -454,12 +458,13 @@ html[data-theme="dark"] {
   }
 
   .header-content .actions > .status-panel {
-    order: 99;
-    flex: 1 1 100%;
+    order: 120 !important;
+    flex: 0 0 100% !important;
+    width: 100% !important;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px 4px;
-    margin: 2px 0 0 !important;
+    margin: 4px 0 0 !important;
     padding: 8px 10px !important;
     border-radius: 12px !important;
     background: rgba(138, 75, 255, 0.08);
@@ -513,7 +518,7 @@ html[data-theme="dark"] {
   }
 
   .el-main.main-container {
-    margin-top: 168px !important;
+    margin-top: 196px !important;
     padding: 10px !important;
   }
 
@@ -640,7 +645,7 @@ html[data-theme="dark"] {
   }
 
   .el-main.main-container {
-    margin-top: 182px !important;
+    margin-top: 214px !important;
   }
 
   .header-actions {
@@ -696,7 +701,7 @@ html[data-theme="dark"] {
   }
 
   .el-main.main-container {
-    margin-top: 176px !important;
+    margin-top: 208px !important;
   }
 }
 

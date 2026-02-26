@@ -139,7 +139,7 @@
     }
 
     .form-input.has-toggle {
-      padding-right: 48px;
+      padding-right: 56px;
     }
 
     .form-input:focus {
@@ -154,14 +154,21 @@
 
     .password-toggle {
       position: absolute;
-      right: 32px;
+      right: 10px;
       top: 50%;
       transform: translateY(-50%);
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: none;
       border: none;
+      border-radius: 8px;
       color: #999;
       cursor: pointer;
-      padding: 4px;
+      padding: 0;
+      z-index: 2;
     }
 
     .password-toggle:hover {
@@ -324,12 +331,14 @@
         font-size: 1em;
       }
 
-      .password-wrapper .form-input {
-        padding-right: 50px;
+      .form-input.has-toggle {
+        padding-right: 52px;
       }
 
-      .toggle-password {
-        width: 42px;
+      .password-toggle {
+        right: 9px;
+        width: 32px;
+        height: 32px;
       }
 
       .submit-btn {
@@ -385,13 +394,15 @@
         border-radius: 10px;
       }
 
-      .password-wrapper .form-input {
-        padding-right: 44px;
+      .form-input.has-toggle {
+        padding-right: 48px;
       }
 
-      .toggle-password {
-        width: 38px;
-        font-size: 0.95em;
+      .password-toggle {
+        right: 8px;
+        width: 30px;
+        height: 30px;
+        font-size: 0.9em;
       }
 
       .submit-btn {
