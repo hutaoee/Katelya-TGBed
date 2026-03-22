@@ -13,6 +13,7 @@
     "docker:up": "npm run docker:init-env && docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:doctor": "node scripts/docker-storage-doctor.js",
+    "docker:smoke:ci": "node scripts/docker-ci-smoke.js",
     "regression:storage": "node scripts/storage-regression.js"
   },
   "dependencies": {

@@ -29,11 +29,12 @@ node scripts/bootstrap-env.js
 ```
 
 What this does:
+
 - if `.env` is missing, copy from `.env.example`
 - if `CONFIG_ENCRYPTION_KEY` / `SESSION_SECRET` are empty or placeholder values, generate secure random values
 - if those keys are already real values, keep them unchanged (prevents breaking decryption of existing storage configs)
 
-2. Fill at least these values in `.env`:
+1. Fill at least these values in `.env`:
 
 - `BASIC_USER` / `BASIC_PASS` (optional, set both to enable login)
 - one bootstrap storage config (for example Telegram: `TG_BOT_TOKEN` + `TG_CHAT_ID`)
@@ -41,13 +42,13 @@ What this does:
   - default: `SETTINGS_STORE=sqlite`
   - Redis mode: set `SETTINGS_STORE=redis` and `SETTINGS_REDIS_URL`
 
-3. Start services:
+1. Start services:
 
 ```bash
 npm run docker:up
 ```
 
-4. Open:
+1. Open:
 
 - Legacy UI: `http://<host>:8080/`
 - WebDAV Page: `http://<host>:8080/webdav.html`
@@ -59,6 +60,7 @@ docker compose ps
 ```
 
 You should see:
+
 - `kvault-api` -> `Up ... (healthy)`
 - `kvault-web` -> `Up ...`
 - `kvault-redis` -> `Up ... (healthy)` when started with `--profile redis`
@@ -79,6 +81,7 @@ docker compose --profile redis up -d --build
 ## Login API (curl)
 
 `/api/auth/login` accepts both payload shapes:
+
 - new: `{ "username": "...", "password": "..." }`
 - compatible: `{ "user": "...", "pass": "..." }`
 
@@ -257,6 +260,22 @@ docker compose up -d --build
 
 Latest runtime backfills missing env bootstrap profiles on startup. No restart means no refresh.
 
+## Docker Smoke CI and Failure Snapshots
+
+This repository includes a Docker smoke workflow at `.github/workflows/docker-smoke.yml`.
+
+The workflow:
+
+- starts Docker `api` service and runs `npm run docker:smoke:ci`
+- checks `/api/status` for `huggingface` and `github` with `configured=true` and `enabled=true`
+- verifies bootstrap profiles include `huggingface` and `github` in `storage_configs`
+
+When smoke checks fail, GitHub Actions uploads artifact `docker-smoke-diagnostics` containing:
+
+- `.artifacts/api-status.json`
+- `.artifacts/storage-profiles.json`
+
+Download these from the workflow run Artifacts panel for faster diagnosis.
 
 ### 6) Supported env aliases in Docker runtime
 
@@ -279,6 +298,7 @@ Classify first, then fix accordingly.
 `GET /api/manage/list` now defaults to the first page when query parameters are omitted.
 
 Supported query parameters:
+
 - `limit` (or `pageSize` / `size`): items per page, default `100`, max `1000`
 - `cursor` (or `offset`): next offset returned by previous response
 - `page` (or `current`): page number (1-based), used when `cursor` is not provided
@@ -313,6 +333,7 @@ node scripts/storage-regression.js
 ```
 
 The script covers:
+
 - `health` / `status`
 - `login` (both payloads)
 - `storage` list/create/update/test/default
@@ -376,6 +397,7 @@ This recreates `.env` from `.env.example` and only auto-fills secret keys when n
 Cause: `CONFIG_ENCRYPTION_KEY` changed after encrypted configs were written to SQLite.
 
 Fix:
+
 - restore the original `CONFIG_ENCRYPTION_KEY`
 - if the original key is lost, delete/recreate affected storage configs in DB
 - avoid editing `CONFIG_ENCRYPTION_KEY` on running instances unless you are doing a planned migration
@@ -385,6 +407,7 @@ Fix:
 Some Docker versions print a bake-related hint/warning during `docker compose build`.
 
 Options:
+
 - ignore it (build still works)
 - enable bake explicitly: `set COMPOSE_BAKE=true` (PowerShell: `$env:COMPOSE_BAKE='true'`)
 - or disable it: `set COMPOSE_BAKE=false`
@@ -408,4 +431,3 @@ npm --prefix frontend run dev
 ```
 
 Docker runtime now serves root static pages directly, aligned with Cloudflare Pages behavior.
-
