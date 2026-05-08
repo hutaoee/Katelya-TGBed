@@ -133,7 +133,7 @@ curl -i -X POST "http://localhost:8080/api/auth/login" \
   - 存储后端：Telegram / R2 / S3 / Discord / HuggingFace / WebDAV / GitHub
 - `web`：Nginx 静态托管 + 反代
   - `/api/*` -> `api:8787`
-  - `/upload` -> `api:8787/upload`
+  - `GET /upload` -> 根目录上传页，`POST /upload` -> `api:8787/upload`
   - `/file/*`、`/share/*` -> `api:8787`
   - `/` -> 根目录静态页面
 
@@ -151,6 +151,7 @@ curl -i -X POST "http://localhost:8080/api/auth/login" \
   2. 在 Cloudflare Pages 中连接 fork
   3. 直接部署
 - 仓库中的 `.github/workflows/pages-deploy.yml` 只保留说明用途，不默认执行密钥化 CLI 发布。
+- 如果 R2 绑定导致 Pages Functions 发布失败（`invalid jurisdiction`），按 [Cloudflare Pages R2 绑定排查](docs/cloudflare-pages-r2.md) 重建 `R2_BUCKET` 绑定或生成干净的 `wrangler.jsonc`。
 
 ---
 

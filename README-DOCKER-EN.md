@@ -144,6 +144,8 @@ Current recommended deployment for Pages is:
 
 No `CF_API_TOKEN` / `CF_ACCOUNT_ID` / `CF_PAGES_PROJECT` secrets are required in this repository by default.
 
+If the R2 binding blocks Pages Functions deployment with `invalid jurisdiction`, follow [Cloudflare Pages R2 binding troubleshooting](docs/cloudflare-pages-r2.md) to rebuild the `R2_BUCKET` binding or generate a clean `wrangler.jsonc`.
+
 ## Recommended Aggregation Pattern (alist/openlist)
 
 To reduce long-term adapter maintenance, recommended production pattern:
