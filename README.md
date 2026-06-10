@@ -41,7 +41,7 @@
 - **内容审核** - 可选的图片审核 API，自动屏蔽不良内容
 - **多格式支持** - 图片、视频、音频、文档、压缩包等
 - **在线预览** - 支持图片、视频、音频、文档（pdf、docx、txt）格式的预览
-- **分片上传** - 支持最大 100MB 文件（配合 R2/S3）
+- **分片上传** - 支持最大 100MB 文件（建议配合 R2/S3/WebDAV/GitHub，Telegram 网页上传按平台限制处理）
 - **访客上传** - 可选的访客上传功能，支持文件大小和每日次数限制
 - **API Token 认证** - 支持 `curl` / ShareX / 脚本等程序化上传与调用
 - **多种视图** - 网格、列表、瀑布流多种管理界面
@@ -76,16 +76,35 @@
 3. **获取 Chat ID**
    - 向 [@VersaToolsBot](https://t.me/VersaToolsBot) 或 [@GetTheirIDBot](https://t.me/GetTheirIDBot) 发送消息获取频道 ID
 
-### 第二步：部署到 Cloudflare
+### 第二步：部署到 Cloudflare Pages
 
 1. **Fork 本仓库**
 
-2. **创建 Pages 项目**
+2. **创建 Pages 项目（推荐 Git 集成）**
    - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
    - 进入 `Workers 和 Pages` → `创建应用程序` → `Pages` → `连接到 Git`
-   - 选择 Fork 的仓库，点击部署
+   - 选择 Fork 的仓库
+   - 构建设置按下面填写：
 
-3. **配置环境变量**
+| 项目 | 值 |
+| :--- | :--- |
+| Framework preset | `None` / 不使用预设 |
+| Root directory | 留空（仓库根目录） |
+| Install command | 留空或 `npm ci` |
+| Build command | `npm run build` |
+| Build output directory | `frontend/dist` |
+| Deploy command | 留空 |
+
+> 不要在 Pages Git 集成里填写 `npx wrangler deploy`。这是 Workers 部署命令，不是 Pages 部署命令；填错会出现 `The detected framework ("Hono") cannot be automatically configured` 一类错误。
+> 本仓库的根目录 `build` 脚本会先安装 `frontend` 依赖，再生成 `frontend/dist`，因此不需要把项目根目录改到 `frontend`。
+
+3. **绑定 KV（图片管理/分片任务必需）**
+   - 进入 Cloudflare Dashboard → `Workers 和 Pages` → `KV`
+   - 创建命名空间，例如 `k-vault`
+   - 回到 Pages 项目 → `设置` → `函数` → `KV 命名空间绑定`
+   - 变量名必须填 `img_url`
+
+4. **配置环境变量**
    - 进入项目 `设置` → `环境变量`
    - 添加必需变量：
 
@@ -96,7 +115,26 @@
 | `BASIC_USER` | 管理后台用户名 | 可选 |
 | `BASIC_PASS` | 管理后台密码 | 可选 |
 
-**重新部署** - 修改环境变量后需重新部署生效
+5. **重新部署**
+   - 修改环境变量或绑定后必须重新部署，运行中的部署不会自动读取新配置。
+   - 访问 `/api/status`，确认 `telegram`、`kv`、`r2` 等状态是否符合预期。
+
+**可选：Wrangler Direct Upload**
+
+如果你不使用 Git 集成，而是想本地构建后直接上传 Pages 产物：
+
+```bash
+npm run pages:deploy -- --project-name <你的 Pages 项目名>
+```
+
+等价于先运行 `npm run build`，再执行 `npx wrangler pages deploy frontend/dist`。不要把 Direct Upload 项目和 Git 集成项目混用；Cloudflare Pages 文档也说明两种创建方式后续不能直接互相切换。
+
+**常见部署错误**
+
+- `The detected framework ("Hono") cannot be automatically configured`：把 Pages 项目误配成了 `npx wrangler deploy`。删除 Deploy command，使用上表的 Pages 构建设置。
+- 构建成功但页面 404：Build output directory 填错了，应为 `frontend/dist`，不是 `dist`。
+- `vite: not found`：说明前端依赖没有安装。使用最新仓库的 `npm run build`，不要只在根目录手写 `npm --prefix frontend run build`。
+- R2 `invalid jurisdiction`：这是 Cloudflare 绑定元数据问题，不是 K-Vault 上传代码问题，按 [Cloudflare Pages R2 绑定排查](docs/cloudflare-pages-r2.md) 处理。
 
 ### 第三步：Docker 自托管部署（可选）
 
@@ -222,6 +260,25 @@ curl -X POST "http://127.0.0.1:8081/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{\"url\":\"https://img.example.com/api/telegram/webhook\",\"secret_token\":\"<YOUR_SECRET>\",\"allowed_updates\":[\"message\",\"channel_post\"]}"
 ```
+
+**Webhook 验证与排查：**
+
+1. `setWebhook` 返回 `{"ok":true,"result":true}` 只代表 Telegram 接受了 webhook 地址，不代表 Bot 已经成功回链。
+2. 调用 `getWebhookInfo` 查看 Telegram 是否正在向你的 Pages 域名投递更新：
+
+```bash
+curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
+```
+
+3. 在群/频道发送图片或文件后，查看 Cloudflare Pages Functions 日志。K-Vault 的 webhook POST 响应会包含：
+   - `directLink`：生成的 `/file/...` 链接
+   - `reply.ok`：是否成功调用 `sendMessage`
+   - `reply.reason`：失败时的 Telegram API 描述或跳过原因
+4. 如果 `reply.ok=false`：
+   - 确认 Bot 在频道中是管理员，或在群里有发言权限。
+   - 确认 `TG_UPLOAD_NOTIFY` / `TELEGRAM_UPLOAD_NOTIFY` 没有被设置为 `false`。
+   - 如果设置了 `TG_WEBHOOK_SECRET`，`setWebhook` 的 `secret_token` 必须完全一致。
+   - 群聊场景如果 Bot 收不到普通消息，关闭 BotFather 中的隐私模式，或让用户显式 @Bot。
 
 > **关于 2G 文件：**  
 > 使用自部署 Bot API（`CUSTOM_BOT_API_URL`）并由 Telegram 客户端直接发到群/频道，再由 Webhook 回链，可利用 Bot API 大文件能力（常见可到 2GB）。  
@@ -556,7 +613,8 @@ curl -X POST "http://127.0.0.1:8081/bot<YOUR_BOT_TOKEN>/setWebhook" \
 
 | 存储后端 | 单文件最大大小 |
 | :--- | :--- |
-| Telegram（网页直传） | 小文件直传 20MB；分片流程当前上限 100MB |
+| Telegram（Cloudflare Pages 网页上传） | 20MB；更大的 Telegram 文件建议通过 Telegram 客户端发送，再由 Webhook 回链 |
+| Telegram（Docker 网页上传） | 50MB（受 Bot API 上传限制影响） |
 | Telegram（自部署 Bot API + Telegram 客户端 + Webhook） | 受 Bot API 与部署环境影响，常见可达 2GB |
 | Cloudflare R2 | 100MB（分片上传） |
 | S3 兼容存储 | 100MB（分片上传） |

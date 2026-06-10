@@ -705,6 +705,32 @@
         line-height: 1.6;
       }
 
+      .image-upload-decision {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .image-upload-decision button {
+        min-height: 52px;
+        padding: 10px 12px;
+        border: 1.5px solid var(--input-border);
+        border-radius: 14px;
+        background: var(--surface-1);
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-weight: 700;
+        transition: var(--transition);
+      }
+
+      .image-upload-decision button:hover,
+      .image-upload-decision button.active {
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+        box-shadow: 0 8px 20px rgba(138, 75, 255, 0.1);
+      }
+
       .compress-controls {
         display: grid;
         gap: 14px;
@@ -2158,9 +2184,9 @@
               >访客模式 - 单文件最大 {{
               formatSize(guestUploadConfig.maxFileSize) }}</span
             >
-            <span v-else style="color: var(--text-muted); font-size: 0.85em"
-              >支持批量上传，最大 100MB/个（分片上传）</span
-            >
+            <span v-else style="color: var(--text-muted); font-size: 0.85em">
+              Max {{ currentUploadLimitLabel }} per file for selected storage
+            </span>
           </div>
 
           <!-- 上传区域 -->
@@ -2179,7 +2205,8 @@
               }}，不支持分片上传
             </div>
             <div class="upload-hint" v-else>
-              支持图片、视频、音频、文档等多种格式，单文件最大 100MB
+              Supports images, videos, audio, and documents. Current limit:
+              {{ currentUploadLimitLabel }}.
             </div>
             <input
               type="file"
@@ -2291,14 +2318,14 @@
 
           <div
             class="image-compress-panel"
-            :class="{ 'is-enabled': imageCompress.enabled }"
+            :class="{ 'is-enabled': imageCompress.enabled || imageUploadDecision === 'optimized' }"
           >
             <div class="image-compress-head">
               <div class="image-compress-title">
                 <i class="fas fa-compress-alt"></i>
                 <div>
                   <strong>图片压缩转换</strong>
-                  <span>可选功能，选择图片后会再次确认，不会默认改动原图。</span>
+                  <span>Choose whether image uploads keep originals, optimize automatically, or ask per batch.</span>
                 </div>
               </div>
               <label class="compress-toggle" title="开启后默认在确认窗口中选择压缩">
@@ -2312,7 +2339,31 @@
               </label>
             </div>
             <div class="image-compress-summary">{{ imageCompressSummary }}</div>
-            <div class="compress-controls" v-if="imageCompress.enabled">
+            <div class="image-upload-decision" role="group" aria-label="Image upload behavior">
+              <button
+                type="button"
+                :class="{ active: imageUploadDecision === 'original' }"
+                @click.stop="setImageUploadDecision('original')"
+              >
+                Original
+              </button>
+              <button
+                type="button"
+                :class="{ active: imageUploadDecision === 'optimized' }"
+                @click.stop="setImageUploadDecision('optimized')"
+              >
+                Optimized
+              </button>
+              <button
+                type="button"
+                :class="{ active: imageUploadDecision === 'ask' }"
+                @click.stop="setImageUploadDecision('ask')"
+              >
+                Ask
+              </button>
+            </div>
+            <div class="image-compress-summary">{{ imageUploadDecisionSummary }}</div>
+            <div class="compress-controls" v-if="imageCompress.enabled || imageUploadDecision === 'optimized'">
               <div class="compress-format-grid">
                 <button
                   class="compress-format-btn"
@@ -2996,6 +3047,7 @@
           urlUploading: false,
           pendingUploadBatch: null,
           pendingCompressionChoice: "original",
+          imageUploadDecision: "original",
           imageCompress: {
             enabled: false,
             format: "webp",
@@ -3033,6 +3085,7 @@
             smallFileThreshold: 20 * 1024 * 1024, // 20MB, below this use direct upload
             maxConcurrent: 3,
           },
+          uploadLimits: {},
         },
         computed: {
           selectedCount() {
@@ -3092,10 +3145,27 @@
             const sizeText = this.imageCompress.maxDimension
               ? `最大边长 ${this.imageCompress.maxDimension}px`
               : "保留原始尺寸";
-            const modeText = this.imageCompress.enabled
-              ? `默认询问是否转换为 ${format.label}，质量 ${this.imageCompress.quality}%，${sizeText}`
-              : "当前默认不压缩；选择图片后仍会弹出确认窗口，可临时开启压缩。";
+            const modeText =
+              this.imageUploadDecision === "optimized"
+                ? `Optimized images use ${format.label}, quality ${this.imageCompress.quality}%, ${sizeText}.`
+                : this.imageUploadDecision === "ask"
+                  ? this.imageCompress.enabled
+                    ? `Ask dialog defaults to ${format.label}, quality ${this.imageCompress.quality}%, ${sizeText}.`
+                    : "Ask dialog defaults to Original."
+                  : "Original image files upload directly by default.";
             return modeText;
+          },
+          imageUploadDecisionSummary() {
+            const messages = {
+              original: "Default: upload original image files directly without a confirmation dialog.",
+              optimized: "Images are converted with the settings below before upload.",
+              ask: "Ask before each image batch and remember this behavior choice.",
+            };
+            return messages[this.imageUploadDecision] || messages.original;
+          },
+          currentUploadLimitLabel() {
+            const limit = this.getUploadLimit(this.storageMode);
+            return this.formatSize(limit.maxBytes || this.uploadConfig.maxSize);
           },
           pendingUploadStats() {
             const files = this.pendingUploadBatch?.files || [];
@@ -3314,6 +3384,99 @@
             return this.imageCompress.support?.[format] !== false;
           },
 
+          loadImageUploadDecision() {
+            try {
+              const saved = localStorage.getItem("kvault:image-upload-decision");
+              if (["original", "optimized", "ask"].includes(saved)) {
+                this.imageUploadDecision = saved;
+              }
+            } catch (e) {}
+          },
+
+          setImageUploadDecision(decision) {
+            if (!["original", "optimized", "ask"].includes(decision)) return;
+            this.imageUploadDecision = decision;
+            try {
+              localStorage.setItem("kvault:image-upload-decision", decision);
+            } catch (e) {}
+          },
+
+          storageEnabledFromStatus(statusItem) {
+            return !!(
+              statusItem &&
+              (statusItem.connected || statusItem.configured) &&
+              statusItem.enabled !== false
+            );
+          },
+
+          getUploadLimit(storageMode) {
+            const fallback = {
+              telegram: {
+                maxBytes: 20 * 1024 * 1024,
+                directThreshold: 20 * 1024 * 1024,
+                supportsChunkUpload: false,
+              },
+              r2: {
+                maxBytes: this.uploadConfig.maxSize,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+              s3: {
+                maxBytes: this.uploadConfig.maxSize,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+              discord: {
+                maxBytes: 25 * 1024 * 1024,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+              huggingface: {
+                maxBytes: 35 * 1024 * 1024,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+              webdav: {
+                maxBytes: this.uploadConfig.maxSize,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+              github: {
+                maxBytes: this.uploadConfig.maxSize,
+                directThreshold: this.uploadConfig.smallFileThreshold,
+                supportsChunkUpload: true,
+              },
+            };
+            const base = fallback[storageMode] || fallback.telegram;
+            return {
+              ...base,
+              ...(this.uploadLimits?.[storageMode] || {}),
+            };
+          },
+
+          validateUploadItemSize(item) {
+            const limit = this.getUploadLimit(this.getItemStorageMode(item));
+            const maxBytes =
+              this.isGuest && this.guestUploadConfig
+                ? Math.min(limit.maxBytes || Infinity, this.guestUploadConfig.maxFileSize)
+                : limit.maxBytes;
+            if (maxBytes && item.file.size > maxBytes) {
+              throw new Error(
+                `${this.getItemStorageTarget(item)} limit is ${this.formatSize(maxBytes)}. ` +
+                  `Use R2/S3/WebDAV/GitHub for larger browser uploads.`
+              );
+            }
+          },
+
+          shouldUseChunkedUpload(item) {
+            if (this.isGuest) return false;
+            const limit = this.getUploadLimit(this.getItemStorageMode(item));
+            if (limit.supportsChunkUpload === false) return false;
+            const threshold =
+              limit.directThreshold || this.uploadConfig.smallFileThreshold;
+            return item.file.size > threshold;
+          },
+
           async detectImageCompressionSupport() {
             if (!document.createElement("canvas").toBlob) return;
             const canvas = document.createElement("canvas");
@@ -3433,11 +3596,14 @@
             const valid = [];
             const invalid = [];
 
-            // 访客模式使用受限的文件大小上限
+            const selectedLimit = this.getUploadLimit(this.storageMode);
             const maxSize =
               this.isGuest && this.guestUploadConfig
-                ? this.guestUploadConfig.maxFileSize
-                : this.uploadConfig.maxSize;
+                ? Math.min(
+                    selectedLimit.maxBytes || Infinity,
+                    this.guestUploadConfig.maxFileSize,
+                  )
+                : selectedLimit.maxBytes || this.uploadConfig.maxSize;
             const maxSizeLabel = this.formatSize(maxSize);
 
             files.forEach((file) => {
@@ -3469,6 +3635,17 @@
             ).length;
 
             if (imageCount > 0) {
+              if (this.imageUploadDecision !== "ask") {
+                await this.processFiles(
+                  valid,
+                  this.snapshotImageCompressOptions(
+                    this.imageUploadDecision === "optimized",
+                  ),
+                  context,
+                );
+                return;
+              }
+
               this.pendingUploadBatch = { files: valid, context };
               this.pendingCompressionChoice = this.imageCompress.enabled
                 ? "compress"
@@ -3800,12 +3977,10 @@
           async uploadFile(item) {
             try {
               await this.prepareUploadItem(item);
+              this.validateUploadItemSize(item);
               item.status = "uploading";
               item.progress = 0;
-              // 访客模式禁止分片上传；压缩后重新计算最终文件大小。
-              item.isChunked = this.isGuest
-                ? false
-                : item.file.size > this.uploadConfig.smallFileThreshold;
+              item.isChunked = this.shouldUseChunkedUpload(item);
               // 根据文件大小决定使用普通上传还是分片上传
               if (item.isChunked) {
                 await this.chunkedUpload(item);
@@ -4683,19 +4858,18 @@
                 credentials: "include",
               });
               const status = await response.json();
+              this.uploadLimits = status.uploadLimits || {};
 
               // 检查各存储后端是否可用
-              this.r2Available = !!(status.r2?.connected && status.r2?.enabled);
-              this.s3Available = !!(status.s3?.connected && status.s3?.enabled);
-              this.discordAvailable = !!(
-                status.discord?.connected && status.discord?.enabled
+              this.r2Available = this.storageEnabledFromStatus(status.r2);
+              this.s3Available = this.storageEnabledFromStatus(status.s3);
+              this.discordAvailable = this.storageEnabledFromStatus(
+                status.discord,
               );
-              this.huggingfaceAvailable = !!(
-                status.huggingface?.connected && status.huggingface?.enabled
+              this.huggingfaceAvailable = this.storageEnabledFromStatus(
+                status.huggingface,
               );
-              this.githubAvailable = !!(
-                status.github?.connected && status.github?.enabled
-              );
+              this.githubAvailable = this.storageEnabledFromStatus(status.github);
 
               // 恢复用户上次保存的存储模式
               const savedMode = localStorage.getItem("storageMode");
@@ -4737,6 +4911,7 @@
             } catch (e) {
               this.storageMode = "telegram";
               this.storageTarget = "Telegram 频道";
+              this.uploadLimits = {};
               this.r2Available = false;
               this.s3Available = false;
               this.discordAvailable = false;
@@ -4787,6 +4962,7 @@
           },
         },
         async mounted() {
+          this.loadImageUploadDecision();
           this.loadImageCompressSettings();
           this.detectImageCompressionSupport();
 

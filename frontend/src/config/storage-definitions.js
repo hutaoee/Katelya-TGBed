@@ -105,11 +105,54 @@ export const STORAGE_FIELDS = {
 };
 
 export const STORAGE_NOTES = {
-  telegram: 'Practical upload stability limit is 50MB.',
+  telegram: 'Cloudflare Pages web upload is capped at 20MB. For larger Telegram files, send them in Telegram and use the webhook return link.',
   discord: 'Default conservative upload cap in adapter is 25MB.',
   huggingface: 'Regular commit upload path is best for small files (adapter cap 35MB).',
   webdav: 'Supports PUT/GET/DELETE and auto MKCOL for nested paths.',
   github: 'Releases mode is preferred for binaries. Contents mode is better for small files/text and has tighter API limits.',
+};
+
+export const DEFAULT_DIRECT_UPLOAD_THRESHOLD = 20 * 1024 * 1024;
+export const DEFAULT_CHUNK_UPLOAD_LIMIT = 100 * 1024 * 1024;
+
+export const FALLBACK_UPLOAD_LIMITS = {
+  telegram: {
+    maxBytes: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: false,
+    message: 'Telegram web upload on Cloudflare Pages is limited to 20MB. Use R2/S3/WebDAV/GitHub for larger browser uploads, or send the file to Telegram and use webhook return links.',
+  },
+  r2: {
+    maxBytes: DEFAULT_CHUNK_UPLOAD_LIMIT,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+  },
+  s3: {
+    maxBytes: DEFAULT_CHUNK_UPLOAD_LIMIT,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+  },
+  discord: {
+    maxBytes: 25 * 1024 * 1024,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+    message: 'Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.',
+  },
+  huggingface: {
+    maxBytes: 35 * 1024 * 1024,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+  },
+  webdav: {
+    maxBytes: DEFAULT_CHUNK_UPLOAD_LIMIT,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+  },
+  github: {
+    maxBytes: DEFAULT_CHUNK_UPLOAD_LIMIT,
+    directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+    supportsChunkUpload: true,
+  },
 };
 
 export const STORAGE_GROUPS = [
@@ -137,5 +180,16 @@ export function storageEnabledFromStatus(status, type) {
   if (!status || !type) return false;
   const item = status[type];
   if (!item) return false;
-  return Boolean(item.connected && (item.enabled !== false));
+  return Boolean((item.connected || item.configured) && item.enabled !== false);
+}
+
+export function getUploadLimit(status, type) {
+  return {
+    ...(FALLBACK_UPLOAD_LIMITS[type] || {
+      maxBytes: DEFAULT_CHUNK_UPLOAD_LIMIT,
+      directThreshold: DEFAULT_DIRECT_UPLOAD_THRESHOLD,
+      supportsChunkUpload: true,
+    }),
+    ...(status?.uploadLimits?.[type] || {}),
+  };
 }

@@ -87,6 +87,25 @@
       @select-format="selectImageFormat"
     />
 
+    <section class="image-upload-behavior card-lite">
+      <div>
+        <h3>Image Upload Behavior</h3>
+        <p class="muted">{{ imageUploadDecisionSummary }}</p>
+      </div>
+      <div class="format-segments">
+        <button
+          v-for="option in imageUploadDecisionOptions"
+          :key="option.value"
+          class="chip"
+          :class="{ active: imageUploadDecision === option.value }"
+          type="button"
+          @click="setImageUploadDecision(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+    </section>
+
     <form class="url-row" @submit.prevent="uploadUrl">
       <input v-model.trim="urlInput" placeholder="https://example.com/file.png" />
       <button class="btn" :disabled="urlUploading || !urlInput">
@@ -156,7 +175,7 @@ import { getDriveTree } from '../api/drive';
 import ImageProcessingPanel from '../components/ImageProcessingPanel.vue';
 import UploadPreparationDialog from '../components/UploadPreparationDialog.vue';
 import { useImageProcessing } from '../composables/useImageProcessing';
-import { STORAGE_TYPES, getStorageLabel, storageEnabledFromStatus } from '../config/storage-definitions';
+import { STORAGE_TYPES, getStorageLabel, getUploadLimit, storageEnabledFromStatus } from '../config/storage-definitions';
 import { isImageProcessable } from '../utils/image-processing';
 
 const picker = ref(null);
@@ -177,7 +196,6 @@ const targetFolderPath = ref('');
 const pendingUploadBatch = ref(null);
 
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
-const SMALL_FILE_THRESHOLD = 20 * 1024 * 1024;
 const V2_ACCEPT = 'application/vnd.kvault.v2+json, application/json;q=0.9, text/plain;q=0.5, */*;q=0.1';
 let folderTreeRequestId = 0;
 
@@ -189,8 +207,27 @@ const {
   refreshImageProcessingSupport,
   selectImageFormat,
   getImageProcessingSnapshot,
+  getImageProcessingSnapshotForDecision,
+  imageUploadDecision,
+  setImageUploadDecision,
   prepareQueuedImage,
 } = useImageProcessing({ formatSize });
+
+const imageUploadDecisionOptions = [
+  { value: 'original', label: 'Original' },
+  { value: 'optimized', label: 'Optimized' },
+  { value: 'ask', label: 'Ask' },
+];
+
+const imageUploadDecisionSummary = computed(() => {
+  if (imageUploadDecision.value === 'optimized') {
+    return 'Supported images are processed with the current compression settings before upload.';
+  }
+  if (imageUploadDecision.value === 'ask') {
+    return 'Show the chooser when selected files include processable images.';
+  }
+  return 'Upload selected images unchanged, matching the original direct-upload flow.';
+});
 
 const modes = computed(() => {
   return STORAGE_TYPES.map((item) => {
@@ -318,7 +355,7 @@ function prepareFilesForUpload(files) {
   const imageCount = files.filter((file) => isImageProcessable(file)).length;
   const context = createUploadContext();
 
-  if (imageCount > 0) {
+  if (imageCount > 0 && imageUploadDecision.value === 'ask') {
     pendingUploadBatch.value = {
       files,
       imageCount,
@@ -327,7 +364,7 @@ function prepareFilesForUpload(files) {
     return;
   }
 
-  enqueueFiles(files, { ...getImageProcessingSnapshot(), enabled: false }, context);
+  enqueueFiles(files, getImageProcessingSnapshotForDecision(imageCount > 0 ? imageUploadDecision.value : 'original'), context);
 }
 
 function cancelPendingUpload() {
@@ -385,9 +422,10 @@ async function processQueue() {
 
       try {
         await prepareQueuedImage(item);
+        validateUploadSize(item);
         item.status = 'uploading';
 
-        const link = item.file.size > SMALL_FILE_THRESHOLD
+        const link = shouldChunkUpload(item)
           ? await chunkUpload(item)
           : await directUpload(item);
 
@@ -406,6 +444,29 @@ async function processQueue() {
   } finally {
     uploading.value = false;
   }
+}
+
+function getItemUploadLimit(item) {
+  return getUploadLimit(status.value, item.storageMode);
+}
+
+function validateUploadSize(item) {
+  const limit = getItemUploadLimit(item);
+  const maxBytes = Number(limit.maxBytes || 0);
+  if (maxBytes > 0 && item.file.size > maxBytes) {
+    throw new Error(limit.message || `${item.storageLabel} upload limit is ${formatSize(maxBytes)}.`);
+  }
+
+  const directThreshold = Number(limit.directThreshold || DEFAULT_CHUNK_SIZE);
+  if (item.file.size > directThreshold && limit.supportsChunkUpload === false) {
+    throw new Error(limit.message || `${item.storageLabel} does not support browser chunk upload for files above ${formatSize(directThreshold)}.`);
+  }
+}
+
+function shouldChunkUpload(item) {
+  const limit = getItemUploadLimit(item);
+  const directThreshold = Number(limit.directThreshold || 20 * 1024 * 1024);
+  return item.file.size > directThreshold && limit.supportsChunkUpload !== false;
 }
 
 function apiUrl(path) {

@@ -16,6 +16,7 @@ import {
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const FETCH_TIMEOUT = 30000;
+const MB = 1024 * 1024;
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -55,6 +56,11 @@ export async function onRequestPost(context) {
         { error: `File too large (${formatSize(fileSize)}). Max allowed is ${formatSize(MAX_FILE_SIZE)}.` },
         413
       );
+    }
+
+    const storageValidation = validateStorageSize(storageMode, fileSize);
+    if (!storageValidation.ok) {
+      return jsonResponse({ error: storageValidation.message }, storageValidation.status);
     }
 
     const contentType = fetched.contentType || "application/octet-stream";
@@ -163,6 +169,31 @@ function jsonResponse(data, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function validateStorageSize(storageMode, fileSize) {
+  const limits = {
+    telegram: {
+      maxBytes: 20 * MB,
+      status: 413,
+      message: "Telegram URL upload on Cloudflare Pages is limited to 20MB. Use R2/S3/WebDAV/GitHub for larger files.",
+    },
+    discord: {
+      maxBytes: 25 * MB,
+      status: 413,
+      message: "Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.",
+    },
+    huggingface: {
+      maxBytes: 35 * MB,
+      status: 413,
+      message: "HuggingFace regular upload is capped at 35MB in K-Vault. Use another storage backend for larger files.",
+    },
+  };
+  const limit = limits[storageMode];
+  if (limit && fileSize > limit.maxBytes) {
+    return { ok: false, status: limit.status, message: limit.message };
+  }
+  return { ok: true };
 }
 
 function normalizeFolderPath(value) {

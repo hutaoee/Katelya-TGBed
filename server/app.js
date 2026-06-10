@@ -449,6 +449,80 @@ function createApp() {
     return String(detail);
   }
 
+  function getUploadLimits() {
+    const mb = 1024 * 1024;
+    const directThreshold = Number(container.config.uploadSmallFileThreshold || 20 * mb);
+    const maxUploadSize = Number(container.config.uploadMaxSize || 100 * mb);
+
+    return {
+      telegram: {
+        maxBytes: Math.min(maxUploadSize, 50 * mb),
+        directThreshold,
+        supportsChunkUpload: true,
+        message: 'Telegram Bot API upload is capped at 50MB in the Docker runtime. For larger files, use R2/S3/WebDAV/GitHub or Telegram client + webhook return links.',
+      },
+      r2: {
+        maxBytes: maxUploadSize,
+        directThreshold,
+        supportsChunkUpload: true,
+      },
+      s3: {
+        maxBytes: maxUploadSize,
+        directThreshold,
+        supportsChunkUpload: true,
+      },
+      discord: {
+        maxBytes: Math.min(maxUploadSize, 25 * mb),
+        directThreshold,
+        supportsChunkUpload: true,
+        message: 'Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.',
+      },
+      huggingface: {
+        maxBytes: Math.min(maxUploadSize, 35 * mb),
+        directThreshold,
+        supportsChunkUpload: true,
+      },
+      webdav: {
+        maxBytes: maxUploadSize,
+        directThreshold,
+        supportsChunkUpload: true,
+      },
+      github: {
+        maxBytes: maxUploadSize,
+        directThreshold,
+        supportsChunkUpload: true,
+      },
+    };
+  }
+
+  function normalizeTelegramReplyResult(result, chatId) {
+    if (!chatId) {
+      return {
+        attempted: false,
+        ok: false,
+        skipped: true,
+        reason: 'missing-chat-id',
+      };
+    }
+
+    if (!result) {
+      return {
+        attempted: true,
+        ok: false,
+        skipped: false,
+        reason: 'empty-result',
+      };
+    }
+
+    return {
+      attempted: !result.skipped,
+      ok: Boolean(result.ok),
+      skipped: Boolean(result.skipped),
+      reason: result.reason || result.error || result.data?.description || '',
+      status: result.data?.error_code || undefined,
+    };
+  }
+
   function uploadSuccessResponse(c, result) {
     const item = {
       src: result.src,
@@ -854,6 +928,7 @@ function createApp() {
         message: authService.isAuthRequired() ? 'Password auth enabled' : 'No auth required',
       },
       guestUpload: guestService.getConfig(),
+      uploadLimits: getUploadLimits(),
       settings: { connected: false, message: 'Unknown' },
       diagnostics: {},
     };
@@ -1002,6 +1077,19 @@ function createApp() {
       }
     }
 
+    const storageMode = asString(body.storageMode || body.storage);
+    const storageModeForLimit = storageMode || container.config.bootstrapDefaultStorage?.type || 'telegram';
+    const uploadLimit = getUploadLimits()[storageModeForLimit];
+    if (uploadLimit && fileSize > uploadLimit.maxBytes) {
+      return jsonError(
+        c,
+        413,
+        'STORAGE_FILE_TOO_LARGE',
+        'File exceeds selected storage limit.',
+        uploadLimit.message || `Selected storage limit is ${Math.floor(uploadLimit.maxBytes / 1024 / 1024)}MB.`
+      );
+    }
+
     let result;
     try {
       result = await uploadService.uploadFile({
@@ -1009,7 +1097,7 @@ function createApp() {
         mimeType: file.type,
         fileSize,
         buffer: fileBuffer,
-        storageMode: asString(body.storageMode || body.storage),
+        storageMode,
         storageId: asString(body.storageId || body.storage_config_id),
         folderPath: normalizeFolderPath(body.folderPath || body.folder || ''),
       });
@@ -1088,12 +1176,36 @@ function createApp() {
       );
     }
 
+    const storageMode = asString(body.storageMode);
+    const storageModeForLimit = storageMode || container.config.bootstrapDefaultStorage?.type || 'telegram';
+    const uploadLimit = getUploadLimits()[storageModeForLimit];
+    if (uploadLimit) {
+      if (fileSize > uploadLimit.maxBytes) {
+        return jsonError(
+          c,
+          413,
+          'STORAGE_FILE_TOO_LARGE',
+          'File exceeds selected storage limit.',
+          uploadLimit.message || `Selected storage limit is ${Math.floor(uploadLimit.maxBytes / 1024 / 1024)}MB.`
+        );
+      }
+      if (fileSize > uploadLimit.directThreshold && uploadLimit.supportsChunkUpload === false) {
+        return jsonError(
+          c,
+          400,
+          'STORAGE_CHUNK_UNSUPPORTED',
+          'Selected storage does not support chunk upload.',
+          uploadLimit.message || 'Choose another storage backend for this file size.'
+        );
+      }
+    }
+
     const init = chunkService.initTask({
       fileName: body.fileName,
       fileSize,
       fileType: body.fileType,
       totalChunks,
-      storageMode: asString(body.storageMode),
+      storageMode,
       storageId: asString(body.storageId),
       folderPath: normalizeFolderPath(body.folderPath || body.folder || ''),
     });
@@ -1873,6 +1985,7 @@ function createApp() {
     const origin = `${requestUrl.protocol}//${requestUrl.host}`;
     const directLink = buildTelegramDirectLink(env, directId, origin);
     const chatId = message?.chat?.id;
+    let reply = normalizeTelegramReplyResult(null, chatId);
 
     if (chatId) {
       const noticeResult = await sendTelegramUploadNotice(
@@ -1887,6 +2000,7 @@ function createApp() {
         },
         env
       );
+      reply = normalizeTelegramReplyResult(noticeResult, chatId);
       if (!noticeResult?.ok && !noticeResult?.skipped) {
         console.warn(
           '[telegram-webhook] reply failed:',
@@ -1900,6 +2014,12 @@ function createApp() {
       directLink,
       storageType: 'telegram',
       mode: useSigned ? 'signed' : 'direct',
+      update: {
+        chatId,
+        messageId: message.message_id,
+        mediaKind: media.kind,
+      },
+      reply,
     });
   });
 

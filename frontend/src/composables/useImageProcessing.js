@@ -7,9 +7,13 @@ import {
   processImageFile,
 } from '../utils/image-processing';
 
+const IMAGE_UPLOAD_DECISION_KEY = 'kvault:image-upload-decision';
+const IMAGE_UPLOAD_DECISIONS = new Set(['original', 'optimized', 'ask']);
+
 export function useImageProcessing({ formatSize }) {
   const imageProcessing = ref(getDefaultImageProcessingOptions());
   const imageProcessingSupport = ref({});
+  const imageUploadDecision = ref(loadImageUploadDecision());
 
   const activeImageFormat = computed(() => getImageProcessingFormat(imageProcessing.value.format));
 
@@ -22,7 +26,7 @@ export function useImageProcessing({ formatSize }) {
 
   const imageProcessingSummary = computed(() => {
     if (!imageProcessing.value.enabled) {
-      return 'Off by default. You can choose compression after selecting image files.';
+      return 'Original files are uploaded unless you switch the image behavior to optimized.';
     }
 
     const parts = [activeImageFormat.value.label];
@@ -58,6 +62,20 @@ export function useImageProcessing({ formatSize }) {
     };
   }
 
+  function setImageUploadDecision(decision) {
+    const normalized = IMAGE_UPLOAD_DECISIONS.has(decision) ? decision : 'original';
+    imageUploadDecision.value = normalized;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(IMAGE_UPLOAD_DECISION_KEY, normalized);
+    }
+  }
+
+  function getImageProcessingSnapshotForDecision(decision = imageUploadDecision.value) {
+    const snapshot = getImageProcessingSnapshot();
+    if (decision === 'optimized') return { ...snapshot, enabled: true };
+    return { ...snapshot, enabled: false };
+  }
+
   async function prepareQueuedImage(item) {
     if (item.imageProcessingPrepared) return;
     item.imageProcessingPrepared = true;
@@ -88,8 +106,17 @@ export function useImageProcessing({ formatSize }) {
     refreshImageProcessingSupport,
     selectImageFormat,
     getImageProcessingSnapshot,
+    getImageProcessingSnapshotForDecision,
+    imageUploadDecision,
+    setImageUploadDecision,
     prepareQueuedImage,
   };
+}
+
+function loadImageUploadDecision() {
+  if (typeof localStorage === 'undefined') return 'original';
+  const stored = localStorage.getItem(IMAGE_UPLOAD_DECISION_KEY);
+  return IMAGE_UPLOAD_DECISIONS.has(stored) ? stored : 'original';
 }
 
 function formatOptimizationResult(result, formatSize) {

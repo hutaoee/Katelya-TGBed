@@ -17,6 +17,8 @@ import {
   shouldWriteTelegramMetadata,
 } from "./utils/telegram.js";
 
+const MB = 1024 * 1024;
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -50,6 +52,10 @@ export async function onRequestPost(context) {
     }
 
     const storageMode = String(formData.get("storageMode") || "telegram").toLowerCase();
+    const uploadValidation = validateDirectUpload(storageMode, uploadFile.size);
+    if (!uploadValidation.ok) {
+      return errorResponse(uploadValidation.message, uploadValidation.status);
+    }
 
     let result;
 
@@ -127,6 +133,35 @@ function errorResponse(message, status = 500) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function validateDirectUpload(storageMode, fileSize) {
+  const limits = {
+    telegram: {
+      maxBytes: 20 * MB,
+      status: 413,
+      message: "Telegram web upload on Cloudflare Pages is limited to 20MB. Use R2/S3/WebDAV/GitHub for larger browser uploads, or send the file to Telegram and use webhook return links.",
+    },
+    discord: {
+      maxBytes: 25 * MB,
+      status: 413,
+      message: "Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.",
+    },
+    huggingface: {
+      maxBytes: 35 * MB,
+      status: 413,
+      message: "HuggingFace regular upload is capped at 35MB in K-Vault. Use another storage backend for larger files.",
+    },
+    r2: { maxBytes: 100 * MB, status: 413, message: "R2 upload limit is 100MB." },
+    s3: { maxBytes: 100 * MB, status: 413, message: "S3 upload limit is 100MB." },
+    webdav: { maxBytes: 100 * MB, status: 413, message: "WebDAV upload limit is 100MB." },
+    github: { maxBytes: 100 * MB, status: 413, message: "GitHub upload limit is 100MB." },
+  };
+  const limit = limits[storageMode] || limits.telegram;
+  if (Number(fileSize || 0) > limit.maxBytes) {
+    return { ok: false, status: limit.status, message: limit.message };
+  }
+  return { ok: true };
 }
 
 function normalizeFileExtension(fileName) {
