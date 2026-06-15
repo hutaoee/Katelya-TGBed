@@ -91,8 +91,8 @@
 | Framework preset | `None` / 不使用预设 |
 | Root directory | 留空（仓库根目录） |
 | Install command | 留空或 `npm ci` |
-| Build command | `npm run build` |
-| Build output directory | `frontend/dist` |
+| Build command | 留空 |
+| Build output directory | 留空 |
 | Deploy command | 留空 |
 
 > 不要在 Pages Git 集成里填写 `npx wrangler deploy`。这是 Workers 部署命令，不是 Pages 部署命令；填错会出现 `The detected framework ("Hono") cannot be automatically configured` 一类错误。
