@@ -191,6 +191,24 @@ class FileRepository {
     };
   }
 
+  findByShareSlug(slugValue) {
+    const slug = String(slugValue || '').trim().toLowerCase();
+    if (!slug) return null;
+
+    const rows = all(this.db, 'SELECT * FROM files ORDER BY created_at DESC');
+    for (const row of rows) {
+      const extra = parseExtra(row.extra_json);
+      const current = String(extra.shareSlug || '').trim().toLowerCase();
+      if (current !== slug) continue;
+      return {
+        ...row,
+        metadata: toMetadata(row),
+      };
+    }
+
+    return null;
+  }
+
   updateMetadata(id, patch = {}) {
     const current = this.getById(id);
     if (!current) return null;

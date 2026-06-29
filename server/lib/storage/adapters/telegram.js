@@ -22,7 +22,7 @@ function buildFileUrl(config, filePath) {
 
 function pickUploadMethod(mimeType = '') {
   const type = String(mimeType).toLowerCase();
-  if (type.startsWith('image/')) return { method: 'sendPhoto', field: 'photo' };
+  if (type.startsWith('image/')) return { method: 'sendDocument', field: 'document' };
   if (type.startsWith('audio/')) return { method: 'sendAudio', field: 'audio' };
   if (type.startsWith('video/')) return { method: 'sendVideo', field: 'video' };
   return { method: 'sendDocument', field: 'document' };
@@ -98,8 +98,8 @@ class TelegramStorageAdapter {
 
     let json = await response.json().catch(() => ({}));
 
-    // Fallback photo/audio to document when Telegram media type checks reject.
-    if ((!response.ok || !json.ok) && (method === 'sendPhoto' || method === 'sendAudio')) {
+    // Fallback audio to document when Telegram media type checks reject.
+    if ((!response.ok || !json.ok) && method === 'sendAudio') {
       const fallbackForm = new FormData();
       fallbackForm.append('chat_id', this.config.chatId);
       fallbackForm.append('document', new File([buffer], normalizedName, { type: mimeType || 'application/octet-stream' }));

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -9,1070 +9,1186 @@
   <link rel="shortcut icon" href="/favicon.ico">
   <link rel="stylesheet" href="/theme.css">
   <script src="/theme.js?v=20260305"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css">
-  <!-- PDF.js (仅用于 PDF 预览) -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <style>
     :root {
-      --primary-color: #8a4bff;
-      --primary-light: #b39ddb;
-      --primary-dark: #6c3ce0;
-      --accent-color: #ffd7e4;
-      --bg-gradient: linear-gradient(135deg, #ffd7e4 0%, #c8f1ff 100%);
-      --card-bg: rgba(255, 255, 255, 0.92);
-      --shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-      --shadow-hover: 0 8px 24px rgba(138, 75, 255, 0.12);
-      --transition: all 0.2s ease;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #17212b;
+      --muted: #667085;
+      --line: #dde3ea;
+      --brand: #2563eb;
+      --brand-dark: #1d4ed8;
+      --danger: #b42318;
+      --code-bg: #101828;
+      --code-text: #e6edf3;
+      --shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
     }
 
     * {
       box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+    }
+
+    html,
+    body {
+      min-height: 100%;
     }
 
     body {
-      background: var(--bg-gradient);
-      background-attachment: fixed;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    .shell {
       min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
-      animation: fadeIn 0.5s ease-out;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* 头部 */
-    .header {
       display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      padding: 18px 28px;
-      background: var(--card-bg);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-radius: 18px;
-      margin-bottom: 24px;
-      box-shadow: var(--shadow);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-      flex-wrap: wrap;
-      gap: 12px;
+      gap: 16px;
+      padding: 16px 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
     }
 
-    .header-title {
-      font-size: 1.35em;
+    .title-group {
+      min-width: 0;
+    }
+
+    .title-group h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.35;
       font-weight: 700;
-      color: #333;
+    }
+
+    .title-group p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .actions {
       display: flex;
       align-items: center;
-      gap: 12px;
-    }
-
-    .header-title i { 
-      color: var(--primary-color); 
-      font-size: 1.1em;
-    }
-
-    .header-actions {
-      display: flex;
-      gap: 10px;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .btn {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 12px;
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      min-height: 36px;
+      padding: 7px 12px;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 0.9em;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: var(--transition);
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--primary-color), #9b6dff);
-      color: white;
-    }
-
-    .btn-primary:hover {
-      background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(138, 75, 255, 0.3);
-    }
-
-    .btn-secondary {
-      background: white;
-      color: #555;
-      border: 1.5px solid #e0e0e0;
-    }
-
-    .btn-secondary:hover {
-      background: linear-gradient(135deg, rgba(255, 215, 228, 0.5), rgba(200, 241, 255, 0.5));
-      border-color: var(--primary-light);
-      color: var(--primary-color);
-      transform: translateY(-2px);
-    }
-
-    /* 预览容器 */
-    .preview-card {
-      background: var(--card-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: 20px;
-      padding: 28px;
-      box-shadow: var(--shadow);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-    }
-
-    .file-info {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #eee;
-      margin-bottom: 20px;
-    }
-
-    .file-icon {
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
-      border-radius: 12px;
-      display: flex;
+      text-decoration: none;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 1.5em;
+      gap: 6px;
+      white-space: nowrap;
     }
 
-    .file-details h2 {
-      font-size: 1.2em;
-      color: #333;
-      margin-bottom: 4px;
-      word-break: break-all;
+    .btn:hover {
+      border-color: #b8c2cc;
+      background: #f8fafc;
+    }
+
+    .btn.primary {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+
+    .btn.primary:hover {
+      background: var(--brand-dark);
+      border-color: var(--brand-dark);
+    }
+
+    .file-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      margin: 18px auto 0;
+      width: min(1180px, calc(100% - 32px));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .file-name {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
     }
 
     .file-meta {
-      font-size: 0.85em;
-      color: #999;
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
     }
 
-    .file-meta span {
-      margin-right: 16px;
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      background: #f8fafc;
     }
 
-    /* 预览区域 */
-    .preview-area {
-      min-height: 400px;
+    .viewer-wrap {
+      flex: 1;
+      width: min(1180px, calc(100% - 32px));
+      margin: 14px auto 24px;
+      display: flex;
+      min-height: 0;
+    }
+
+    .viewer {
+      flex: 1;
+      min-height: calc(100vh - 210px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #f5f5f5;
-      border-radius: 12px;
-      overflow: hidden;
       position: relative;
     }
 
-    /* 图片预览 - 原生方式 */
-    .preview-image {
-      max-width: 100%;
-      max-height: 70vh;
-      object-fit: contain;
+    .viewer.media {
+      background: #070b12;
     }
 
-    /* 统一媒体预览 - iframe 容器 (85% 屏幕宽高) */
-    .iframe-preview-container {
-      width: 100%;
-      height: 70vh;
-      position: relative;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #000;
-    }
-
-    .iframe-preview-container iframe {
+    .preview-image,
+    .preview-video {
       width: 100%;
       height: 100%;
-      border: none;
+      max-height: calc(100vh - 230px);
+      object-fit: contain;
+      display: block;
+      background: #070b12;
     }
 
-    .preview-error {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 40px;
-      color: #f56c6c;
-      min-height: 200px;
+    .preview-video {
+      min-height: 360px;
     }
 
-    .preview-error i {
-      font-size: 3em;
-      margin-bottom: 16px;
+    .preview-audio {
+      width: min(720px, calc(100% - 40px));
     }
 
-    /* PDF 预览 */
     .preview-pdf {
       width: 100%;
-      height: 70vh;
-      border: none;
+      height: calc(100vh - 220px);
+      min-height: 520px;
+      border: 0;
+      background: #fff;
     }
 
-    /* Office 文档预览 */
-    .preview-office-container {
+    .doc-view,
+    .text-view {
       width: 100%;
-      padding: 10px;
-    }
-
-    .preview-office {
-      width: 100%;
-      height: 70vh;
-      border: none;
-      border-radius: 8px;
-    }
-
-    /* 文本预览 */
-    .preview-text {
-      width: 100%;
-      height: 60vh;
-      padding: 20px;
-      background: #1e1e1e;
-      color: #d4d4d4;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 14px;
-      line-height: 1.6;
+      height: calc(100vh - 220px);
+      min-height: 520px;
       overflow: auto;
+      align-self: stretch;
+    }
+
+    .text-view {
+      margin: 0;
+      padding: 20px;
+      background: var(--code-bg);
+      color: var(--code-text);
+      font: 13px/1.6 Consolas, Monaco, "Courier New", monospace;
       white-space: pre-wrap;
-      word-break: break-all;
-      border-radius: 8px;
+      overflow-wrap: anywhere;
     }
 
-    /* 不支持预览 */
-    .preview-unsupported {
+    .doc-view {
+      padding: 32px;
+      background: #eef2f6;
+    }
+
+    .doc-page {
+      max-width: 860px;
+      min-height: 680px;
+      margin: 0 auto;
+      padding: 42px 52px;
+      background: #fff;
+      border: 1px solid #d7dde5;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+      color: #111827;
+    }
+
+    .doc-page h1,
+    .doc-page h2,
+    .doc-page h3 {
+      margin: 18px 0 10px;
+      line-height: 1.25;
+    }
+
+    .doc-page h1 {
+      font-size: 26px;
+    }
+
+    .doc-page h2 {
+      font-size: 21px;
+    }
+
+    .doc-page h3 {
+      font-size: 17px;
+    }
+
+    .doc-page p {
+      margin: 0 0 10px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .doc-page table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      table-layout: fixed;
+    }
+
+    .doc-page td,
+    .doc-page th {
+      border: 1px solid #cbd5e1;
+      padding: 8px;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .sheet-section,
+    .slide-section {
+      margin: 0 0 22px;
+    }
+
+    .sheet-section h2,
+    .slide-section h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    .sheet-table {
+      font-size: 13px;
+    }
+
+    .status {
+      max-width: 540px;
+      padding: 32px;
       text-align: center;
-      padding: 60px 40px;
-      color: #666;
+      color: var(--muted);
     }
 
-    .preview-unsupported i {
-      font-size: 4em;
-      color: #ddd;
-      margin-bottom: 20px;
-    }
-
-    .preview-unsupported h3 {
+    .status strong {
+      display: block;
       margin-bottom: 8px;
-      color: #333;
+      color: var(--text);
+      font-size: 17px;
     }
 
-    /* 加载状态 */
-    .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      color: #666;
+    .status.error strong {
+      color: var(--danger);
     }
 
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #eee;
-      border-top-color: var(--primary-color);
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid #d8dee7;
+      border-top-color: var(--brand);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* NSFW 遮罩 */
-    .nsfw-mask {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      z-index: 10;
-    }
-
-    .nsfw-mask i {
-      font-size: 3em;
-      margin-bottom: 16px;
-      color: #f56c6c;
-    }
-
-    .nsfw-mask h3 {
-      margin-bottom: 8px;
-    }
-
-    .nsfw-mask p {
-      color: #aaa;
-      margin-bottom: 20px;
-    }
-
-    .nsfw-mask .btn {
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .nsfw-mask .btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    /* 设置面板 */
-    .settings-panel {
-      margin-top: 20px;
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.6);
-      border-radius: 12px;
-    }
-
-    .settings-title {
-      font-size: 0.9em;
-      color: #666;
-      margin-bottom: 12px;
-    }
-
-    .setting-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-    }
-
-    .setting-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #333;
-    }
-
-    .toggle-switch {
-      position: relative;
-      width: 44px;
-      height: 24px;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      transition: 0.3s;
-      border-radius: 24px;
-    }
-
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 18px;
-      width: 18px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: 0.3s;
-      border-radius: 50%;
-    }
-
-    input:checked + .toggle-slider {
-      background-color: var(--primary-color);
-    }
-
-    input:checked + .toggle-slider:before {
-      transform: translateX(20px);
-    }
-
-    /* 响应式设计 */
-    @media (max-width: 768px) {
-      .container {
-        padding: 16px;
+      to {
+        transform: rotate(360deg);
       }
+    }
 
-      .header {
-        flex-direction: column;
+    body.embed {
+      background: #070b12;
+    }
+
+    body.embed .topbar,
+    body.embed .file-panel {
+      display: none;
+    }
+
+    body.embed .viewer-wrap {
+      width: 100%;
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    body.embed .viewer {
+      border: 0;
+      border-radius: 0;
+      min-height: 100vh;
+      box-shadow: none;
+    }
+
+    body.embed .preview-image,
+    body.embed .preview-video {
+      max-height: 100vh;
+    }
+
+    body.embed .preview-pdf,
+    body.embed .doc-view,
+    body.embed .text-view {
+      height: 100vh;
+      min-height: 100vh;
+    }
+
+    @media (max-width: 720px) {
+      .topbar {
         align-items: stretch;
-        gap: 12px;
-        padding: 16px 20px;
-        border-radius: 14px;
-      }
-
-      .header-title {
-        font-size: 1.15em;
-        justify-content: center;
-      }
-
-      .header-actions {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-      }
-
-      .btn {
-        padding: 10px 18px;
-        font-size: 0.85em;
-      }
-
-      .preview-card {
-        padding: 20px;
-        border-radius: 16px;
-      }
-
-      .file-info {
         flex-direction: column;
-        text-align: center;
-        gap: 12px;
-      }
-
-      .file-icon {
-        width: 56px;
-        height: 56px;
-        font-size: 1.8em;
-      }
-
-      .file-details h2 {
-        font-size: 1.1em;
-      }
-
-      .file-meta {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-      }
-
-      .file-meta span {
-        margin-right: 0;
-      }
-
-      .preview-area {
-        min-height: 300px;
-        border-radius: 10px;
-      }
-
-      .preview-image {
-        max-height: 50vh;
-      }
-
-      .iframe-preview-container.video {
-        max-height: 50vh;
-      }
-
-      .iframe-preview-container.audio {
-        height: 180px;
-      }
-
-      .preview-pdf,
-      .preview-office {
-        height: 50vh;
-      }
-
-      .preview-text {
-        height: 45vh;
-        font-size: 13px;
-        padding: 16px;
-      }
-
-      .settings-panel {
         padding: 14px;
       }
 
-      .setting-item {
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .container {
-        padding: 10px;
-      }
-
-      .header {
-        padding: 12px 14px;
-        gap: 10px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-      }
-
-      .header-title {
-        font-size: 1em;
-        gap: 8px;
-      }
-
-      .header-actions {
-        gap: 6px;
+      .actions {
+        justify-content: stretch;
       }
 
       .btn {
-        padding: 8px 12px;
-        font-size: 0.78em;
-        border-radius: 10px;
-        gap: 6px;
         flex: 1;
-        justify-content: center;
         min-width: 0;
       }
 
-      .btn i {
-        font-size: 0.9em;
+      .file-panel {
+        grid-template-columns: 1fr;
+        width: calc(100% - 20px);
+        margin-top: 10px;
       }
 
-      .preview-card {
-        padding: 14px;
-        border-radius: 12px;
+      .viewer-wrap {
+        width: calc(100% - 20px);
+        margin: 10px auto;
       }
 
-      .file-info {
-        padding-bottom: 12px;
-        margin-bottom: 14px;
-      }
-
-      .file-icon {
-        width: 44px;
-        height: 44px;
-        font-size: 1.4em;
-        border-radius: 10px;
-      }
-
-      .file-details h2 {
-        font-size: 0.95em;
-        line-height: 1.3;
-      }
-
-      .file-meta {
-        font-size: 0.78em;
-        gap: 6px;
-      }
-
-      .preview-area {
-        min-height: 250px;
-        border-radius: 8px;
-      }
-
-      .preview-image {
-        max-height: 40vh;
-      }
-
-      .iframe-preview-container.video {
-        max-height: 45vh;
-      }
-
-      .iframe-preview-container.audio {
-        height: 160px;
-      }
-
+      .viewer,
       .preview-pdf,
-      .preview-office {
-        height: 45vh;
+      .doc-view,
+      .text-view {
+        min-height: calc(100vh - 230px);
+        height: calc(100vh - 230px);
       }
 
-      .preview-text {
-        height: 40vh;
-        font-size: 12px;
+      .preview-video {
+        min-height: 240px;
+      }
+
+      .doc-view {
         padding: 12px;
-        line-height: 1.5;
       }
 
-      .preview-unsupported {
-        padding: 40px 20px;
-      }
-
-      .preview-unsupported i {
-        font-size: 3em;
-      }
-
-      .preview-unsupported h3 {
-        font-size: 1em;
-      }
-
-      .preview-unsupported p {
-        font-size: 0.85em;
-      }
-
-      .nsfw-mask i {
-        font-size: 2.5em;
-      }
-
-      .nsfw-mask h3 {
-        font-size: 1em;
-      }
-
-      .nsfw-mask p {
-        font-size: 0.85em;
-      }
-
-      .loading {
-        gap: 12px;
-      }
-
-      .loading-spinner {
-        width: 32px;
-        height: 32px;
-      }
-
-      .settings-panel {
-        padding: 12px;
-        border-radius: 10px;
-        margin-top: 16px;
-      }
-
-      .settings-title {
-        font-size: 0.82em;
-        margin-bottom: 10px;
-      }
-
-      .setting-label {
-        font-size: 0.88em;
-      }
-
-      .toggle-switch {
-        width: 40px;
-        height: 22px;
-      }
-
-      .toggle-slider:before {
-        height: 16px;
-        width: 16px;
-      }
-
-      input:checked + .toggle-slider:before {
-        transform: translateX(18px);
+      .doc-page {
+        min-height: 100%;
+        padding: 22px 18px;
       }
     }
   </style>
   <link rel="stylesheet" href="/mobile-refactor.css">
 </head>
 <body>
-  <div class="container" id="app" v-cloak>
-    <!-- 头部 -->
-    <div class="header">
-      <div class="header-title">
-        <i class="fas fa-eye"></i>
-        <span>文件预览</span>
+  <div class="shell">
+    <header class="topbar">
+      <div class="title-group">
+        <h1>文件预览</h1>
+        <p id="subtitle">K-Vault 本地预览器</p>
       </div>
-      <div class="header-actions">
-        <button class="btn btn-secondary" @click="copyLink">
-          <i class="fas fa-copy"></i> 复制链接
-        </button>
-        <button class="btn btn-primary" @click="downloadFile">
-          <i class="fas fa-download"></i> 下载文件
-        </button>
-        <a href="./" class="btn btn-secondary">
-          <i class="fas fa-home"></i> 返回首页
-        </a>
+      <div class="actions">
+        <button class="btn" type="button" id="copyBtn">复制直链</button>
+        <button class="btn" type="button" id="openBtn">新标签打开</button>
+        <button class="btn primary" type="button" id="downloadBtn">下载文件</button>
       </div>
-    </div>
+    </header>
 
-    <!-- 预览卡片 -->
-    <div class="preview-card">
-      <!-- 文件信息 -->
-      <div class="file-info">
-        <div class="file-icon">
-          <i :class="fileIcon"></i>
-        </div>
-        <div class="file-details">
-          <h2>{{ fileName }}</h2>
-          <div class="file-meta">
-            <span><i class="fas fa-file"></i> {{ fileType }}</span>
-            <span v-if="fileSize"><i class="fas fa-hdd"></i> {{ formatSize(fileSize) }}</span>
-          </div>
+    <section class="file-panel">
+      <div>
+        <h2 class="file-name" id="fileName">-</h2>
+        <div class="file-meta">
+          <span class="pill" id="fileType">未知类型</span>
+          <span class="pill" id="fileSize" hidden></span>
+          <span class="pill" id="storageHint">本地预览</span>
         </div>
       </div>
+    </section>
 
-      <!-- 预览区域 -->
-      <div class="preview-area">
-        <!-- 加载中 -->
-        <div class="loading" v-if="loading">
-          <div class="loading-spinner"></div>
-          <span>加载中...</span>
-        </div>
-
-        <!-- NSFW 遮罩 -->
-        <div class="nsfw-mask" v-if="isNsfw && !showNsfw && !loading">
-          <i class="fas fa-exclamation-triangle"></i>
-          <h3>敏感内容警告</h3>
-          <p>此内容可能包含成人或敏感内容</p>
-          <button class="btn" @click="showNsfw = true">
-            <i class="fas fa-eye"></i> 仍然查看
-          </button>
-        </div>
-
-        <!-- 图片预览 - 保持原生方式 -->
-        <img v-if="previewType === 'image' && !loading" 
-             :src="fileUrl" 
-             class="preview-image"
-             @load="onImageLoad"
-             @error="onLoadError">
-
-        <!-- 视频/音频/文档预览 - 使用统一媒体预览服务 iframe -->
-        <div v-else-if="(previewType === 'video' || previewType === 'audio') && !loading" 
-             class="iframe-preview-container">
-          <iframe 
-            ref="mediaIframe"
-            :src="iframePreviewUrl"
-            allow="autoplay; fullscreen; encrypted-media"
-            allowfullscreen>
-          </iframe>
-        </div>
-
-        <!-- PDF 预览 - 使用统一媒体预览服务 -->
-        <div v-else-if="previewType === 'pdf' && !loading" class="iframe-preview-container">
-          <iframe 
-            ref="mediaIframe"
-            :src="iframePreviewUrl"
-            allow="autoplay; fullscreen; encrypted-media"
-            allowfullscreen>
-          </iframe>
-        </div>
-
-        <!-- Office 文档预览 - 使用统一媒体预览服务 -->
-        <div v-else-if="previewType === 'office' && !loading" class="iframe-preview-container">
-          <iframe 
-            ref="mediaIframe"
-            :src="iframePreviewUrl"
-            allow="autoplay; fullscreen; encrypted-media"
-            allowfullscreen>
-          </iframe>
-        </div>
-
-        <!-- 文本预览 -->
-        <pre v-else-if="previewType === 'text' && !loading" class="preview-text">{{ textContent }}</pre>
-
-        <!-- 不支持预览 -->
-        <div v-else-if="previewType === 'unsupported' && !loading" class="preview-unsupported">
-          <i :class="fileIcon"></i>
-          <h3>此文件类型暂不支持在线预览</h3>
-          <p>您可以下载后使用本地软件打开</p>
-          <button class="btn btn-primary" @click="downloadFile" style="margin-top: 16px;">
-            <i class="fas fa-download"></i> 下载文件
-          </button>
+    <main class="viewer-wrap">
+      <div class="viewer" id="viewer">
+        <div class="status">
+          <div class="spinner"></div>
+          <strong>正在加载预览</strong>
+          <span>请稍候</span>
         </div>
       </div>
-
-      <!-- 设置面板 -->
-      <div class="settings-panel">
-        <div class="settings-title">预览设置</div>
-        <div class="setting-item">
-          <label class="setting-label">
-            <i class="fas fa-shield-alt"></i>
-            <span>安全模式（自动检测敏感内容）</span>
-          </label>
-          <label class="toggle-switch">
-            <input type="checkbox" v-model="safeMode" @change="saveSafeMode">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">
-            <i class="fas fa-bolt"></i>
-            <span>省流模式（不加载 >5MB 图片）</span>
-          </label>
-          <label class="toggle-switch">
-            <input type="checkbox" v-model="dataSaverMode" @change="saveDataSaverMode">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-    </div>
+    </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
-  <!-- NSFW.js for client-side detection -->
-  <script src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
   <script>
-    // 统一媒体预览服务基础 URL
-    const PREVIEW_SERVICE_BASE = 'https://www.katelya.eu.org';
+    (() => {
+      "use strict";
 
-    new Vue({
-      el: '#app',
-      data: {
-        fileUrl: '',
-        fileName: '',
-        fileType: '',
+      const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico", "avif"]);
+      const VIDEO_EXTS = new Set(["mp4", "webm", "ogg", "ogv", "mov", "m4v"]);
+      const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "oga", "flac", "aac", "m4a", "opus"]);
+      const TEXT_EXTS = new Set([
+        "txt", "md", "json", "xml", "html", "htm", "css", "js", "mjs", "ts", "tsx", "jsx",
+        "py", "java", "c", "cpp", "h", "hpp", "go", "rs", "sh", "bat", "ps1", "sql",
+        "yaml", "yml", "toml", "ini", "conf", "cfg", "log", "csv"
+      ]);
+      const OPEN_XML_EXTS = new Set(["docx", "xlsx", "pptx"]);
+
+      const params = new URLSearchParams(window.location.search);
+      const state = {
+        fileUrl: "",
+        fileName: "",
         fileSize: 0,
-        previewType: 'unsupported',
-        loading: true,
-        textContent: '',
-        isNsfw: false,
-        showNsfw: false,
-        safeMode: true,
-        dataSaverMode: false,
-        nsfwModel: null
-      },
-      computed: {
-        fileIcon() {
-          const iconMap = {
-            'image': 'fas fa-image',
-            'video': 'fas fa-video',
-            'audio': 'fas fa-music',
-            'pdf': 'fas fa-file-pdf',
-            'office': 'fas fa-file-word',
-            'text': 'fas fa-file-alt',
-            'unsupported': 'fas fa-file'
-          };
-          return iconMap[this.previewType] || 'fas fa-file';
-        },
-        // 获取文件完整 URL
-        fullFileUrl() {
-          const fileUrlPath = this.fileUrl.startsWith('/') ? this.fileUrl : `/file/${this.fileUrl}`;
-          return window.location.origin + fileUrlPath;
-        },
-        // 统一媒体预览 URL - 简化版，Blog 会自动识别文件类型
-        iframePreviewUrl() {
-          const params = new URLSearchParams({
-            url: this.fullFileUrl,
-            title: this.fileName,
-            autoplay: '1'
-          });
-          return `${PREVIEW_SERVICE_BASE}/preview?${params.toString()}`;
-        },
-        officeViewerUrl() {
-          // 使用 Microsoft Office Online Viewer
-          // URL 必须经过正确编码
-          return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(this.fullFileUrl)}`;
+        contentType: "",
+        kind: "unsupported",
+        extension: "",
+        autoplay: params.get("autoplay") === "1" || params.get("autoplay") === "true"
+      };
+
+      const els = {
+        viewer: document.getElementById("viewer"),
+        fileName: document.getElementById("fileName"),
+        fileType: document.getElementById("fileType"),
+        fileSize: document.getElementById("fileSize"),
+        subtitle: document.getElementById("subtitle"),
+        copyBtn: document.getElementById("copyBtn"),
+        openBtn: document.getElementById("openBtn"),
+        downloadBtn: document.getElementById("downloadBtn")
+      };
+
+      if (params.get("embed") === "1" || params.get("embed") === "true") {
+        document.body.classList.add("embed");
+      }
+
+      els.copyBtn.addEventListener("click", copyDirectLink);
+      els.openBtn.addEventListener("click", () => {
+        if (state.fileUrl) window.open(state.fileUrl, "_blank", "noopener,noreferrer");
+      });
+      els.downloadBtn.addEventListener("click", downloadFile);
+
+      init();
+
+      async function init() {
+        try {
+          state.fileUrl = resolveRequestedUrl();
+          if (!state.fileUrl) {
+            showStatus("缺少预览参数", "请提供 file、f 或 url 参数。", "error");
+            return;
+          }
+
+          await hydrateFileInfo();
+          state.extension = getExtension(state.fileName) || getExtension(urlPathName(state.fileUrl));
+          state.kind = getPreviewKind(state.extension, state.contentType);
+          updateHeader();
+          await renderPreview();
+        } catch (error) {
+          console.error("Preview failed:", error);
+          showStatus("预览加载失败", error.message || "文件无法预览。", "error");
         }
-      },
-      methods: {
-        formatSize(bytes) {
-          if (!bytes) return '';
-          const units = ['B', 'KB', 'MB', 'GB'];
-          let i = 0;
-          while (bytes >= 1024 && i < units.length - 1) {
-            bytes /= 1024;
-            i++;
-          }
-          return bytes.toFixed(i > 0 ? 2 : 0) + ' ' + units[i];
-        },
+      }
 
-        getPreviewType(ext) {
-          const types = {
-            image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico'],
-            video: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'],
-            audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus'],
-            pdf: ['pdf'],
-            office: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'],
-            text: ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'h', 'sh', 'sql', 'yaml', 'yml', 'log', 'csv', 'ini', 'conf', 'cfg']
-          };
-          
-          for (const [type, exts] of Object.entries(types)) {
-            if (exts.includes(ext)) return type;
-          }
-          return 'unsupported';
-        },
+      function resolveRequestedUrl() {
+        const directUrl = params.get("url") || params.get("src");
+        if (directUrl) return toAbsoluteUrl(directUrl);
 
-        async init() {
-          // 获取 URL 参数
-          const params = new URLSearchParams(window.location.search);
-          const file = params.get('file') || params.get('f');
-          
-          // 临时文件标识符（用于 API 查询）
-          let fileIdWithExt = '';
-          
-          if (!file) {
-            // 尝试从路径获取
-            const path = window.location.pathname;
-            if (path.startsWith('/file/')) {
-              this.fileUrl = path;
-              fileIdWithExt = path.split('/').pop(); // 如: BQACAg...docx
-            } else {
-              this.loading = false;
-              this.previewType = 'unsupported';
-              return;
+        const file = params.get("file") || params.get("f") || params.get("id");
+        if (!file) return "";
+        if (/^https?:\/\//i.test(file) || file.startsWith("/")) return toAbsoluteUrl(file);
+        return toAbsoluteUrl(`/file/${encodeURIComponent(file)}`);
+      }
+
+      function toAbsoluteUrl(value) {
+        try {
+          return new URL(value, window.location.origin).href;
+        } catch {
+          return "";
+        }
+      }
+
+      async function hydrateFileInfo() {
+        const hintedTitle = params.get("title") || params.get("name");
+        const fileId = getLocalFileId(state.fileUrl);
+        let metadata = null;
+
+        if (fileId) {
+          metadata = await fetchFileInfo(fileId);
+        }
+
+        state.fileName = hintedTitle
+          || metadata?.fileName
+          || metadata?.originalName
+          || fileNameFromUrl(state.fileUrl)
+          || fileId
+          || "download";
+
+        state.fileSize = Number(metadata?.fileSize || 0);
+
+        try {
+          const response = await fetch(state.fileUrl, {
+            method: "HEAD",
+            credentials: "include"
+          });
+          if (response.ok || response.status === 206) {
+            state.contentType = response.headers.get("Content-Type") || "";
+            const contentLength = Number(response.headers.get("Content-Length") || 0);
+            if (!state.fileSize && Number.isFinite(contentLength)) state.fileSize = contentLength;
+
+            if (!hintedTitle && !metadata?.fileName) {
+              const headerName = parseContentDisposition(response.headers.get("Content-Disposition") || "");
+              if (headerName) state.fileName = headerName;
+            }
+          }
+        } catch (error) {
+          console.warn("HEAD request skipped:", error);
+        }
+      }
+
+      async function fetchFileInfo(fileId) {
+        try {
+          const response = await fetch(`/api/file-info/${encodeURIComponent(fileId)}`, {
+            credentials: "include"
+          });
+          if (!response.ok) return null;
+          return await response.json();
+        } catch (error) {
+          console.warn("File info request skipped:", error);
+          return null;
+        }
+      }
+
+      function getLocalFileId(fileUrl) {
+        try {
+          const url = new URL(fileUrl);
+          if (url.origin !== window.location.origin) return "";
+          if (!url.pathname.startsWith("/file/")) return "";
+          return decodeURIComponent(url.pathname.slice("/file/".length));
+        } catch {
+          return "";
+        }
+      }
+
+      function fileNameFromUrl(fileUrl) {
+        try {
+          const url = new URL(fileUrl, window.location.origin);
+          const last = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+          return last || "";
+        } catch {
+          return "";
+        }
+      }
+
+      function urlPathName(fileUrl) {
+        try {
+          return new URL(fileUrl, window.location.origin).pathname;
+        } catch {
+          return fileUrl;
+        }
+      }
+
+      function parseContentDisposition(value) {
+        const encoded = value.match(/filename\*=UTF-8''([^;]+)/i);
+        if (encoded) {
+          try {
+            return decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, ""));
+          } catch {
+            return "";
+          }
+        }
+
+        const plain = value.match(/filename="?([^";]+)"?/i);
+        if (!plain) return "";
+        try {
+          return decodeURIComponent(plain[1]);
+        } catch {
+          return plain[1];
+        }
+      }
+
+      function getExtension(name) {
+        const clean = String(name || "").split(/[?#]/)[0];
+        const last = clean.split("/").pop() || "";
+        const index = last.lastIndexOf(".");
+        return index >= 0 ? last.slice(index + 1).toLowerCase() : "";
+      }
+
+      function getPreviewKind(ext, contentType) {
+        const type = String(contentType || "").split(";")[0].trim().toLowerCase();
+        if (type.startsWith("image/") || IMAGE_EXTS.has(ext)) return "image";
+        if (type.startsWith("video/") || VIDEO_EXTS.has(ext)) return "video";
+        if (type.startsWith("audio/") || AUDIO_EXTS.has(ext)) return "audio";
+        if (type === "application/pdf" || ext === "pdf") return "pdf";
+        if (OPEN_XML_EXTS.has(ext)) return ext;
+        if (type.startsWith("text/") || TEXT_EXTS.has(ext)) return "text";
+        return "unsupported";
+      }
+
+      function updateHeader() {
+        document.title = `${state.fileName} | K-Vault`;
+        els.fileName.textContent = state.fileName;
+        els.fileType.textContent = displayTypeName(state.kind, state.extension);
+        els.subtitle.textContent = state.fileUrl;
+        if (state.fileSize > 0) {
+          els.fileSize.hidden = false;
+          els.fileSize.textContent = formatSize(state.fileSize);
+        }
+      }
+
+      function displayTypeName(kind, ext) {
+        const suffix = ext ? ext.toUpperCase() : "FILE";
+        const names = {
+          image: "图片",
+          video: "视频",
+          audio: "音频",
+          pdf: "PDF",
+          docx: "Word 文档",
+          xlsx: "Excel 表格",
+          pptx: "PowerPoint",
+          text: "文本"
+        };
+        return `${names[kind] || "暂不支持"} · ${suffix}`;
+      }
+
+      function formatSize(bytes) {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let value = Number(bytes) || 0;
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+          value /= 1024;
+          unit += 1;
+        }
+        return `${value.toFixed(unit === 0 ? 0 : 2)} ${units[unit]}`;
+      }
+
+      async function renderPreview() {
+        setViewerClass();
+
+        if (state.kind === "image") {
+          renderImage();
+        } else if (state.kind === "video") {
+          renderVideo();
+        } else if (state.kind === "audio") {
+          renderAudio();
+        } else if (state.kind === "pdf") {
+          renderPdf();
+        } else if (state.kind === "text") {
+          await renderText();
+        } else if (OPEN_XML_EXTS.has(state.kind)) {
+          await renderOpenXml(state.kind);
+        } else {
+          showStatus("此格式暂不支持在线预览", "可以直接下载后用本地应用打开。");
+        }
+      }
+
+      function setViewerClass() {
+        els.viewer.className = "viewer";
+        if (state.kind === "image" || state.kind === "video" || state.kind === "audio") {
+          els.viewer.classList.add("media");
+        }
+      }
+
+      function clearViewer() {
+        els.viewer.replaceChildren();
+      }
+
+      function renderImage() {
+        clearViewer();
+        const image = document.createElement("img");
+        image.className = "preview-image";
+        image.alt = state.fileName;
+        image.src = state.fileUrl;
+        image.decoding = "async";
+        image.onerror = () => showStatus("图片加载失败", "文件不存在、无权限或浏览器不支持该图片格式。", "error");
+        els.viewer.appendChild(image);
+      }
+
+      function renderVideo() {
+        clearViewer();
+        const video = document.createElement("video");
+        video.className = "preview-video";
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.autoplay = state.autoplay;
+        video.src = state.fileUrl;
+        video.onerror = () => showStatus("视频加载失败", "请确认文件为浏览器可播放的 mp4/webm/mov 编码，并且直链可访问。", "error");
+        els.viewer.appendChild(video);
+      }
+
+      function renderAudio() {
+        clearViewer();
+        const audio = document.createElement("audio");
+        audio.className = "preview-audio";
+        audio.controls = true;
+        audio.preload = "metadata";
+        audio.autoplay = state.autoplay;
+        audio.src = state.fileUrl;
+        audio.onerror = () => showStatus("音频加载失败", "请确认文件为浏览器可播放的 mp3/wav/ogg/m4a 编码，并且直链可访问。", "error");
+        els.viewer.appendChild(audio);
+      }
+
+      function renderPdf() {
+        clearViewer();
+        const iframe = document.createElement("iframe");
+        iframe.className = "preview-pdf";
+        iframe.title = state.fileName;
+        iframe.src = `${state.fileUrl}#toolbar=1&navpanes=0&view=FitH`;
+        els.viewer.appendChild(iframe);
+      }
+
+      async function renderText() {
+        showStatus("正在读取文本", "请稍候");
+        const response = await fetch(state.fileUrl, { credentials: "include" });
+        if (!response.ok) throw new Error(`文本读取失败：HTTP ${response.status}`);
+        const text = await response.text();
+        clearViewer();
+        const pre = document.createElement("pre");
+        pre.className = "text-view";
+        pre.textContent = text;
+        els.viewer.appendChild(pre);
+      }
+
+      async function renderOpenXml(kind) {
+        if (!("DecompressionStream" in window)) {
+          showStatus("当前浏览器不支持本地 Office 解压预览", "请使用最新版 Chrome、Edge 或 Firefox，或下载文件后打开。", "error");
+          return;
+        }
+
+        showStatus("正在解析文档", "文档会在浏览器本地渲染，不会发送到外部预览服务。");
+        const response = await fetch(state.fileUrl, { credentials: "include" });
+        if (!response.ok) throw new Error(`文档读取失败：HTTP ${response.status}`);
+
+        const zip = await loadZip(await response.arrayBuffer());
+        if (kind === "docx") await renderDocx(zip);
+        if (kind === "xlsx") await renderXlsx(zip);
+        if (kind === "pptx") await renderPptx(zip);
+      }
+
+      async function renderDocx(zip) {
+        const documentXml = await zip.text("word/document.xml");
+        if (!documentXml) throw new Error("DOCX 缺少 word/document.xml。");
+
+        const xml = parseXml(documentXml);
+        const body = firstByLocalName(xml, "body") || xml.documentElement;
+        const page = createDocPage();
+
+        for (const child of elementChildren(body)) {
+          if (localName(child) === "p") {
+            const paragraph = createDocParagraph(child);
+            if (paragraph) page.appendChild(paragraph);
+          } else if (localName(child) === "tbl") {
+            page.appendChild(createDocTable(child));
+          }
+        }
+
+        if (!page.childElementCount) {
+          const empty = document.createElement("p");
+          empty.textContent = "文档没有可提取的正文内容。";
+          page.appendChild(empty);
+        }
+
+        showDocPage(page);
+      }
+
+      async function renderXlsx(zip) {
+        const sharedStrings = await readSharedStrings(zip);
+        const worksheetNames = zip.names()
+          .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+          .sort(compareNumberedPath);
+
+        if (!worksheetNames.length) throw new Error("XLSX 缺少 worksheet 数据。");
+
+        const page = createDocPage();
+        for (let index = 0; index < Math.min(worksheetNames.length, 5); index += 1) {
+          const xml = parseXml(await zip.text(worksheetNames[index]));
+          const section = document.createElement("section");
+          section.className = "sheet-section";
+
+          const heading = document.createElement("h2");
+          heading.textContent = `Sheet ${index + 1}`;
+          section.appendChild(heading);
+
+          section.appendChild(createSheetTable(xml, sharedStrings));
+          page.appendChild(section);
+        }
+        showDocPage(page);
+      }
+
+      async function renderPptx(zip) {
+        const slideNames = zip.names()
+          .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+          .sort(compareNumberedPath);
+
+        if (!slideNames.length) throw new Error("PPTX 缺少 slide 数据。");
+
+        const page = createDocPage();
+        for (let index = 0; index < Math.min(slideNames.length, 30); index += 1) {
+          const xml = parseXml(await zip.text(slideNames[index]));
+          const section = document.createElement("section");
+          section.className = "slide-section";
+
+          const heading = document.createElement("h2");
+          heading.textContent = `Slide ${index + 1}`;
+          section.appendChild(heading);
+
+          const paragraphs = allByLocalName(xml, "p")
+            .map((node) => collectText(node).trim())
+            .filter(Boolean);
+
+          if (paragraphs.length) {
+            for (const text of paragraphs) {
+              const p = document.createElement("p");
+              p.textContent = text;
+              section.appendChild(p);
             }
           } else {
-            this.fileUrl = file.startsWith('/') ? file : `/file/${file}`;
-            fileIdWithExt = file.split('/').pop();
+            const p = document.createElement("p");
+            p.textContent = "此页没有可提取文本。";
+            section.appendChild(p);
           }
 
-          // 从 API 获取原始文件名（metadata.fileName）
-          // 如果 API 返回原始文件名则使用，否则回退到 URL 中的 fileId
-          try {
-            const infoResponse = await fetch(`/api/file-info/${fileIdWithExt}`);
-            if (infoResponse.ok) {
-              const info = await infoResponse.json();
-              // 优先使用 API 返回的原始文件名
-              this.fileName = info.fileName || info.originalName || fileIdWithExt;
-              this.fileSize = info.fileSize || 0;
-            } else {
-              // API 失败，回退到 URL 解析
-              this.fileName = fileIdWithExt;
-            }
-          } catch (e) {
-            console.warn('Failed to fetch file info:', e);
-            this.fileName = fileIdWithExt;
-          }
-
-          // 获取文件扩展名
-          const ext = this.fileName.split('.').pop().toLowerCase();
-          this.fileType = ext.toUpperCase();
-          this.previewType = this.getPreviewType(ext);
-
-          // 加载设置
-          this.loadSettings();
-
-          // 如果是文本，获取内容
-          if (this.previewType === 'text') {
-            await this.loadTextContent();
-          } else if (this.previewType === 'video') {
-            // 视频使用统一媒体预览服务 iframe
-            this.loading = false;
-          } else if (this.previewType === 'audio') {
-            // 音频使用统一媒体预览服务 iframe
-            this.loading = false;
-          } else if (this.previewType === 'image') {
-            // 图片：先设置 loading = false 让图片开始加载，onImageLoad 会处理后续
-            this.loading = false;
-          } else if (this.previewType === 'pdf') {
-            // PDF：直接加载
-            this.loading = false;
-          } else if (this.previewType === 'office') {
-            // Office 文档：iframe 加载完成会设置 loading = false
-            this.loading = false;
-          } else if (this.previewType === 'unsupported') {
-            this.loading = false;
-          }
-
-          // 初始化 NSFW 检测
-          if (this.safeMode && this.previewType === 'image') {
-            await this.initNsfwDetection();
-          }
-        },
-
-        async loadTextContent() {
-          try {
-            const response = await fetch(this.fileUrl);
-            this.textContent = await response.text();
-            this.loading = false;
-          } catch (e) {
-            console.error('Load text error:', e);
-            this.loading = false;
-          }
-        },
-
-        async initNsfwDetection() {
-          try {
-            this.nsfwModel = await nsfwjs.load();
-          } catch (e) {
-            console.error('NSFW model load error:', e);
-          }
-        },
-
-        async onImageLoad(e) {
-          this.loading = false;
-          
-          // NSFW 检测
-          if (this.safeMode && this.nsfwModel) {
-            try {
-              const predictions = await this.nsfwModel.classify(e.target);
-              const nsfw = predictions.find(p => 
-                (p.className === 'Porn' || p.className === 'Hentai' || p.className === 'Sexy') 
-                && p.probability > 0.5
-              );
-              this.isNsfw = !!nsfw;
-            } catch (e) {
-              console.error('NSFW detection error:', e);
-            }
-          }
-        },
-
-        onLoadError() {
-          this.loading = false;
-          this.previewType = 'unsupported';
-        },
-
-        // 销毁 iframe（彻底移除以停止播放）
-        destroyIframes() {
-          if (this.$refs.mediaIframe) {
-            this.$refs.mediaIframe.src = 'about:blank';
-          }
-        },
-
-        copyLink() {
-          const url = window.location.origin + this.fileUrl;
-          navigator.clipboard.writeText(url).then(() => {
-            alert('链接已复制');
-          });
-        },
-
-        downloadFile() {
-          // 尝试从 URL 参数或 metadata 获取原始文件名
-          const originalFileName = this.fileName;
-          const link = document.createElement('a');
-          link.href = this.fileUrl;
-          link.download = originalFileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        },
-
-        loadSettings() {
-          this.safeMode = localStorage.getItem('safeMode') !== 'false';
-          this.dataSaverMode = localStorage.getItem('dataSaverMode') === 'true';
-        },
-
-        saveSafeMode() {
-          localStorage.setItem('safeMode', this.safeMode);
-        },
-
-        saveDataSaverMode() {
-          localStorage.setItem('dataSaverMode', this.dataSaverMode);
-        },
-
-        async checkAuth() {
-          try {
-            const response = await fetch('/api/auth/check', { credentials: 'include' });
-            const data = await response.json();
-            if (data.authRequired && !data.authenticated) {
-              window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
-              return false;
-            }
-            return true;
-          } catch (e) {
-            console.error('Auth check failed:', e);
-            return true;
-          }
+          page.appendChild(section);
         }
-      },
-      async mounted() {
-        const isAuth = await this.checkAuth();
-        if (!isAuth) return;
-        this.init();
-      },
-      beforeDestroy() {
-        // 销毁 iframe 防止后台继续播放
-        this.destroyIframes();
+        showDocPage(page);
       }
-    });
+
+      function createDocPage() {
+        const page = document.createElement("article");
+        page.className = "doc-page";
+        return page;
+      }
+
+      function showDocPage(page) {
+        clearViewer();
+        const wrapper = document.createElement("div");
+        wrapper.className = "doc-view";
+        wrapper.appendChild(page);
+        els.viewer.appendChild(wrapper);
+      }
+
+      function createDocParagraph(node) {
+        const text = collectText(node);
+        const style = getParagraphStyle(node).toLowerCase();
+        const trimmed = text.trim();
+
+        if (!trimmed && !text.includes("\n")) return null;
+
+        let tag = "p";
+        if (style.includes("title")) tag = "h1";
+        if (style.includes("heading1") || style.includes("heading 1")) tag = "h2";
+        if (style.includes("heading2") || style.includes("heading 2")) tag = "h3";
+
+        const element = document.createElement(tag);
+        element.textContent = text;
+        return element;
+      }
+
+      function createDocTable(tbl) {
+        const table = document.createElement("table");
+        for (const rowNode of elementChildren(tbl).filter((node) => localName(node) === "tr")) {
+          const row = document.createElement("tr");
+          const cells = elementChildren(rowNode).filter((node) => localName(node) === "tc");
+          for (const cellNode of cells) {
+            const cell = document.createElement("td");
+            const parts = allByLocalName(cellNode, "p")
+              .map((p) => collectText(p).trim())
+              .filter(Boolean);
+            cell.textContent = parts.join("\n");
+            row.appendChild(cell);
+          }
+          table.appendChild(row);
+        }
+        return table;
+      }
+
+      function getParagraphStyle(node) {
+        const pPr = elementChildren(node).find((child) => localName(child) === "pPr");
+        if (!pPr) return "";
+        const pStyle = elementChildren(pPr).find((child) => localName(child) === "pStyle");
+        return pStyle ? attr(pStyle, "val") : "";
+      }
+
+      async function readSharedStrings(zip) {
+        const xmlText = await zip.text("xl/sharedStrings.xml");
+        if (!xmlText) return [];
+        const xml = parseXml(xmlText);
+        return allByLocalName(xml, "si").map((node) => collectText(node));
+      }
+
+      function createSheetTable(xml, sharedStrings) {
+        const table = document.createElement("table");
+        table.className = "sheet-table";
+        const rows = allByLocalName(xml, "row").slice(0, 200);
+        let maxCol = 0;
+        const matrix = rows.map((row) => {
+          const values = [];
+          for (const cell of elementChildren(row).filter((node) => localName(node) === "c")) {
+            const ref = attr(cell, "r");
+            const col = ref ? columnIndex(ref.replace(/\d+/g, "")) : values.length;
+            values[col] = readCellValue(cell, sharedStrings);
+            maxCol = Math.max(maxCol, col);
+          }
+          return values;
+        });
+
+        for (const values of matrix) {
+          const tr = document.createElement("tr");
+          for (let col = 0; col <= Math.min(maxCol, 30); col += 1) {
+            const td = document.createElement("td");
+            td.textContent = values[col] || "";
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+
+        return table;
+      }
+
+      function readCellValue(cell, sharedStrings) {
+        const type = attr(cell, "t");
+        if (type === "inlineStr") {
+          const inline = firstByLocalName(cell, "is");
+          return inline ? collectText(inline) : "";
+        }
+
+        const valueNode = firstByLocalName(cell, "v");
+        const raw = valueNode ? valueNode.textContent : "";
+        if (type === "s") return sharedStrings[Number(raw)] || "";
+        return raw;
+      }
+
+      function columnIndex(letters) {
+        let value = 0;
+        for (const char of String(letters || "").toUpperCase()) {
+          const code = char.charCodeAt(0);
+          if (code < 65 || code > 90) continue;
+          value = value * 26 + (code - 64);
+        }
+        return Math.max(0, value - 1);
+      }
+
+      function compareNumberedPath(left, right) {
+        const a = Number((left.match(/(\d+)(?=\.xml$)/) || [0, 0])[1]);
+        const b = Number((right.match(/(\d+)(?=\.xml$)/) || [0, 0])[1]);
+        return a - b;
+      }
+
+      function parseXml(text) {
+        const xml = new DOMParser().parseFromString(text, "application/xml");
+        if (xml.getElementsByTagName("parsererror").length) {
+          throw new Error("文档 XML 解析失败。");
+        }
+        return xml;
+      }
+
+      function collectText(node) {
+        let output = "";
+        const walk = (current) => {
+          for (const child of current.childNodes || []) {
+            const name = localName(child);
+            if (name === "t") {
+              output += child.textContent || "";
+            } else if (name === "tab") {
+              output += "\t";
+            } else if (name === "br" || name === "cr") {
+              output += "\n";
+            } else {
+              walk(child);
+            }
+          }
+        };
+        walk(node);
+        return output;
+      }
+
+      function allByLocalName(root, name) {
+        const found = [];
+        const walk = (node) => {
+          if (localName(node) === name) found.push(node);
+          for (const child of node.childNodes || []) walk(child);
+        };
+        walk(root);
+        return found;
+      }
+
+      function firstByLocalName(root, name) {
+        return allByLocalName(root, name)[0] || null;
+      }
+
+      function elementChildren(node) {
+        return Array.from(node.childNodes || []).filter((child) => child.nodeType === 1);
+      }
+
+      function localName(node) {
+        return String(node?.localName || node?.nodeName || "").split(":").pop();
+      }
+
+      function attr(node, name) {
+        if (!node) return "";
+        return node.getAttribute(name)
+          || node.getAttribute(`w:${name}`)
+          || node.getAttribute(`r:${name}`)
+          || node.getAttribute(`a:${name}`)
+          || "";
+      }
+
+      async function loadZip(arrayBuffer) {
+        const bytes = new Uint8Array(arrayBuffer);
+        const view = new DataView(arrayBuffer);
+        const eocd = findEndOfCentralDirectory(view);
+        if (eocd < 0) throw new Error("文档不是有效的 ZIP/OpenXML 文件。");
+
+        const totalEntries = view.getUint16(eocd + 10, true);
+        const centralDirectoryOffset = view.getUint32(eocd + 16, true);
+        const entries = new Map();
+        let offset = centralDirectoryOffset;
+
+        for (let index = 0; index < totalEntries; index += 1) {
+          if (view.getUint32(offset, true) !== 0x02014b50) break;
+
+          const flags = view.getUint16(offset + 8, true);
+          const method = view.getUint16(offset + 10, true);
+          const compressedSize = view.getUint32(offset + 20, true);
+          const fileNameLength = view.getUint16(offset + 28, true);
+          const extraLength = view.getUint16(offset + 30, true);
+          const commentLength = view.getUint16(offset + 32, true);
+          const localHeaderOffset = view.getUint32(offset + 42, true);
+          const nameBytes = bytes.slice(offset + 46, offset + 46 + fileNameLength);
+          const fileName = decodeZipName(nameBytes, flags);
+
+          entries.set(fileName, {
+            method,
+            compressedSize,
+            localHeaderOffset
+          });
+
+          offset += 46 + fileNameLength + extraLength + commentLength;
+        }
+
+        async function bytesFor(name) {
+          const entry = entries.get(name);
+          if (!entry) return null;
+          if (view.getUint32(entry.localHeaderOffset, true) !== 0x04034b50) {
+            throw new Error(`ZIP local header missing for ${name}`);
+          }
+
+          const fileNameLength = view.getUint16(entry.localHeaderOffset + 26, true);
+          const extraLength = view.getUint16(entry.localHeaderOffset + 28, true);
+          const start = entry.localHeaderOffset + 30 + fileNameLength + extraLength;
+          const compressed = bytes.slice(start, start + entry.compressedSize);
+
+          if (entry.method === 0) return compressed;
+          if (entry.method === 8) return inflateRaw(compressed);
+          throw new Error(`不支持的 ZIP 压缩方式：${entry.method}`);
+        }
+
+        return {
+          names: () => Array.from(entries.keys()),
+          bytes: bytesFor,
+          text: async (name) => {
+            const data = await bytesFor(name);
+            return data ? new TextDecoder("utf-8").decode(data) : "";
+          }
+        };
+      }
+
+      function findEndOfCentralDirectory(view) {
+        const min = Math.max(0, view.byteLength - 0xffff - 22);
+        for (let offset = view.byteLength - 22; offset >= min; offset -= 1) {
+          if (view.getUint32(offset, true) === 0x06054b50) return offset;
+        }
+        return -1;
+      }
+
+      function decodeZipName(bytes, flags) {
+        const decoder = new TextDecoder((flags & 0x0800) ? "utf-8" : "utf-8");
+        return decoder.decode(bytes);
+      }
+
+      async function inflateRaw(bytes) {
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      }
+
+      function showStatus(title, detail = "", variant = "") {
+        els.viewer.className = "viewer";
+        clearViewer();
+        const status = document.createElement("div");
+        status.className = `status ${variant}`.trim();
+        if (!variant) {
+          const spinner = document.createElement("div");
+          spinner.className = "spinner";
+          status.appendChild(spinner);
+        }
+        const strong = document.createElement("strong");
+        strong.textContent = title;
+        status.appendChild(strong);
+        if (detail) {
+          const span = document.createElement("span");
+          span.textContent = detail;
+          status.appendChild(span);
+        }
+        els.viewer.appendChild(status);
+      }
+
+      async function copyDirectLink() {
+        if (!state.fileUrl) return;
+        try {
+          await navigator.clipboard.writeText(state.fileUrl);
+          els.copyBtn.textContent = "已复制";
+          window.setTimeout(() => {
+            els.copyBtn.textContent = "复制直链";
+          }, 1400);
+        } catch {
+          window.prompt("复制直链", state.fileUrl);
+        }
+      }
+
+      function downloadFile() {
+        if (!state.fileUrl) return;
+        const link = document.createElement("a");
+        link.href = state.fileUrl;
+        link.download = state.fileName || "download";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+    })();
   </script>
 </body>
 </html>

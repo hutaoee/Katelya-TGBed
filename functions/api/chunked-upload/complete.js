@@ -374,7 +374,7 @@ async function uploadToTelegram(file, env) {
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
-      if (apiEndpoint === 'sendPhoto' || apiEndpoint === 'sendAudio') {
+      if (apiEndpoint === 'sendAudio') {
         const docFormData = new FormData();
         docFormData.append('chat_id', env.TG_Chat_ID);
         docFormData.append('document', file);

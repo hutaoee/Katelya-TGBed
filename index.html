@@ -2325,7 +2325,7 @@
                 <i class="fas fa-compress-alt"></i>
                 <div>
                   <strong>图片压缩转换</strong>
-                  <span>Choose whether image uploads keep originals, optimize automatically, or ask per batch.</span>
+                  <span>选择图片上传时保留原图、自动压缩转换，或每批上传前询问。</span>
                 </div>
               </div>
               <label class="compress-toggle" title="开启后默认在确认窗口中选择压缩">
@@ -2339,27 +2339,27 @@
               </label>
             </div>
             <div class="image-compress-summary">{{ imageCompressSummary }}</div>
-            <div class="image-upload-decision" role="group" aria-label="Image upload behavior">
+            <div class="image-upload-decision" role="group" aria-label="图片上传处理方式">
               <button
                 type="button"
                 :class="{ active: imageUploadDecision === 'original' }"
                 @click.stop="setImageUploadDecision('original')"
               >
-                Original
+                原图
               </button>
               <button
                 type="button"
                 :class="{ active: imageUploadDecision === 'optimized' }"
                 @click.stop="setImageUploadDecision('optimized')"
               >
-                Optimized
+                压缩转换
               </button>
               <button
                 type="button"
                 :class="{ active: imageUploadDecision === 'ask' }"
                 @click.stop="setImageUploadDecision('ask')"
               >
-                Ask
+                每次询问
               </button>
             </div>
             <div class="image-compress-summary">{{ imageUploadDecisionSummary }}</div>
@@ -3034,8 +3034,7 @@
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/element-ui@2.15.3/lib/index.js"></script>
     <script>
-      // 统一媒体预览服务基础 URL
-      const PREVIEW_SERVICE_BASE = "https://www.katelya.eu.org";
+      const LOCAL_PREVIEW_PAGE = "/preview.html";
 
       new Vue({
         el: "#app",
@@ -3147,19 +3146,19 @@
               : "保留原始尺寸";
             const modeText =
               this.imageUploadDecision === "optimized"
-                ? `Optimized images use ${format.label}, quality ${this.imageCompress.quality}%, ${sizeText}.`
+                ? `默认使用 ${format.label}，质量 ${this.imageCompress.quality}%，${sizeText}。`
                 : this.imageUploadDecision === "ask"
                   ? this.imageCompress.enabled
-                    ? `Ask dialog defaults to ${format.label}, quality ${this.imageCompress.quality}%, ${sizeText}.`
-                    : "Ask dialog defaults to Original."
-                  : "Original image files upload directly by default.";
+                    ? `询问窗口默认使用 ${format.label}，质量 ${this.imageCompress.quality}%，${sizeText}。`
+                    : "询问窗口默认选择原图上传。"
+                  : "默认直接上传原始图片文件。";
             return modeText;
           },
           imageUploadDecisionSummary() {
             const messages = {
-              original: "Default: upload original image files directly without a confirmation dialog.",
-              optimized: "Images are converted with the settings below before upload.",
-              ask: "Ask before each image batch and remember this behavior choice.",
+              original: "默认直接上传原始图片文件，不弹出确认窗口。",
+              optimized: "上传前会按下方设置转换图片。",
+              ask: "每批图片上传前先询问，并记住本次处理方式。",
             };
             return messages[this.imageUploadDecision] || messages.original;
           },
@@ -4289,20 +4288,23 @@
               return;
             }
 
-            // 视频/音频/文档类型 - 使用 Blog Preview iframe
-            const videoExts = ["mp4", "webm", "mkv", "avi", "mov", "m3u8"];
-            const audioExts = ["mp3", "wav", "ogg", "flac", "m4a"];
-            const docExts = ["pdf", "txt", "doc", "docx"];
+            // 视频/音频/文档类型 - 使用本项目的 local preview iframe
+            const videoExts = ["mp4", "webm", "ogg", "ogv", "mov", "m4v"];
+            const audioExts = ["mp3", "wav", "ogg", "oga", "flac", "aac", "m4a", "opus"];
+            const docExts = ["pdf", "txt", "md", "json", "xml", "csv", "docx", "xlsx", "pptx"];
 
             if (
               videoExts.includes(ext) ||
               audioExts.includes(ext) ||
               docExts.includes(ext)
             ) {
-              // 构造 iframe URL - 必须对参数进行 encodeURIComponent 编码
-              const targetUrl = encodeURIComponent(fileUrl);
-              const targetTitle = encodeURIComponent(fileName);
-              const iframeSrc = `${PREVIEW_SERVICE_BASE}/preview?url=${targetUrl}&title=${targetTitle}&autoplay=1`;
+              const previewParams = new URLSearchParams({
+                url: fileUrl,
+                title: fileName,
+                autoplay: "1",
+                embed: "1",
+              });
+              const iframeSrc = `${LOCAL_PREVIEW_PAGE}?${previewParams.toString()}`;
 
               this.previewData = {
                 type: "iframe",

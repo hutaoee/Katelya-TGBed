@@ -2778,11 +2778,14 @@
           return;
         }
 
-        // 视频/音频/文档类型 - iframe 预览
-        const PREVIEW_SERVICE_BASE = 'https://www.katelya.eu.org';
-        const targetUrl = encodeURIComponent(fileUrl);
-        const targetTitle = encodeURIComponent(fileName);
-        const iframeSrc = `${PREVIEW_SERVICE_BASE}/preview?url=${targetUrl}&title=${targetTitle}&autoplay=1`;
+        // 视频/音频/文档类型 - 使用本项目的 local preview iframe
+        const previewParams = new URLSearchParams({
+          url: fileUrl,
+          title: fileName,
+          autoplay: '1',
+          embed: '1'
+        });
+        const iframeSrc = `${this.baseURL}/preview.html?${previewParams.toString()}`;
 
         this.previewData = {
           type: 'iframe',

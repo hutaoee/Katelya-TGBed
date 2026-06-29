@@ -2,86 +2,53 @@
 
 ## 项目定位
 
-K-Vault 是一个开源的图片/文件托管系统，目标是提供 **低成本、可扩展、可自托管** 的文件床方案。  
-项目同时支持：
+K-Vault 是一个开源的图片/文件托管系统，目标是提供低成本、可扩展、可自托管的文件床方案。
 
-- Cloudflare Pages 部署（Serverless 运行形态）
-- Docker 自托管部署（Node.js 服务形态）
+项目同时支持两种部署方式：
 
-核心价值是：在统一的上传与管理体验下，按需接入不同存储后端（Telegram、R2、S3、WebDAV、GitHub、Discord、HuggingFace 等），满足从个人使用到轻量团队场景的文件托管需求。
+- Cloudflare Pages：仓库根目录静态页面 + `functions/` 的 Serverless 运行形态
+- Docker/自托管：同一套仓库根目录静态页面 + Node.js/Hono 后端运行形态
+
+当前前端入口是仓库根目录下的静态页面，例如 `index.html`、`admin.html`、`gallery.html`、`webdav.html`、`login.html`、`preview.html`。旧版 `frontend/` Vite/Vue UI 与 `_nuxt/` 产物已不再作为项目 UI 入口。
 
 ## 技术架构
 
-### 1) 前端
+### 1. 前端
 
-- 技术栈：`Vue 3` + `Vite` + `Pinia` + `Vue Router`
-- 主要职责：
-  - 文件上传与链接生成
-  - 后台管理（文件列表、目录、状态查看）
-  - 存储配置管理与连通性测试
-- 主要入口视图：
-  - `/upload` 上传页面
-  - `/drive` 文件管理
-  - `/storage` 存储配置
-  - `/status` 系统状态
+- 技术形态：根目录静态 HTML/CSS/JS 页面
+- Cloudflare Pages：直接发布仓库根目录，Build command 和 Build output directory 留空
+- Docker：Nginx 直接服务同一套根目录静态页面
+- 主要页面：
+  - `/`：上传首页
+  - `/admin.html`：后台管理
+  - `/gallery.html`：图片/文件浏览
+  - `/webdav.html`：WebDAV 场景页面
+  - `/login.html`：登录页
+  - `/preview.html`：文件预览页
 
-### 2) 后端（Docker 运行时）
+### 2. 后端
 
-- 技术栈：`Node.js` + `Hono`
-- 设计特点：
-  - 统一 API 网关：鉴权、错误模型、跨域处理
-  - 上传能力：普通上传、URL 上传、分片上传
-  - 管理能力：文件管理、目录管理、批量操作
-  - 分享能力：带签名的时效分享链接
-  - 状态能力：多存储健康检查、系统诊断信息
+- Cloudflare Pages Functions：提供上传、文件代理、管理、API Token、API v1、短分享等接口
+- Docker Node.js/Hono：提供与 Pages 对齐的后端接口，并通过 Nginx 代理 `/api/`、`/upload`、`/file/`、`/share/`、`/s/`
 
-### 3) 数据层
+### 3. 数据层
 
-- 默认元数据存储：`SQLite`（文件信息、会话、配置、访客计数等）
-- 可选设置存储：`Redis`（通过 `SETTINGS_STORE=redis` 切换）
-- 数据表覆盖：
-  - 存储配置
-  - 文件元数据
-  - 虚拟目录
-  - 登录会话
-  - 访客上传计数
-  - 分片任务
-  - 应用设置
+- Cloudflare Pages：KV/R2 等绑定承载元数据与对象数据
+- Docker：SQLite 存储文件元数据、存储配置、会话、访客计数、分片任务、API Token、Paste 等数据
+- 可选 Redis：用于应用设置存储
 
-## 功能能力概览
+## 功能能力
 
-- 多后端文件存储（可动态启停和切换默认后端）
-- 多种上传方式（拖拽/粘贴/URL/分片）
-- 访客上传策略（大小与频次限制）
-- 后台文件管理（搜索、筛选、移动、重命名、删除）
-- WebDAV 场景支持（适配 NAS/alist/openlist 等）
-- API Token 能力（便于脚本、ShareX、自动化集成）
-- 签名分享链接（控制有效期，降低直链暴露风险）
+- 多后端文件存储：Telegram、R2、S3、Discord、HuggingFace、WebDAV、GitHub
+- 多种上传方式：普通上传、URL 上传、分片上传
+- 后台文件管理：搜索、筛选、目录、移动、重命名、删除、白名单/黑名单、收藏
+- API Token：支持 `upload`、`read`、`delete`、`paste` 权限
+- API v1：支持文件上传/列表/下载/删除和文本 Paste 创建/读取/删除
+- 分享能力：支持签名分享链接和 `/s/:slug` 短分享入口
+- 运行状态检查：存储连通性、上传限制、诊断信息
 
-## 典型使用场景
+## 部署建议
 
-- 个人图床/文件床：快速生成公网可访问链接
-- 自建文件中转站：统一入口对接多个对象存储
-- 团队轻量资源分发：用签名链接控制分享有效期
-- 家庭 NAS 联动：通过 WebDAV 将现有存储接入 Web 管理界面
-
-## 部署模式建议
-
-- **优先快速上线**：Cloudflare Pages 方案，配置少、成本低
-- **需要本地自治/内网部署**：Docker 方案，更易接入本地盘与私有网络
-- **大文件或多后端混合场景**：Docker + R2/S3/WebDAV 组合更灵活
-
-## 项目亮点
-
-1. 同时兼顾 Serverless 与自托管两种运行方式  
-2. 存储适配层设计清晰，后端扩展新存储类型成本低  
-3. 前台上传与后台管理体验统一，学习成本低  
-4. 对自动化友好（API Token、脚本回归、健康检查）  
-
-## 后续可演进方向（建议）
-
-- 引入更细粒度权限模型（多用户/角色）
-- 增强审计日志与操作追踪
-- 增加对象生命周期策略（自动归档/过期清理）
-- 补充性能指标面板与可视化运维能力
-
+- 快速上线优先选 Cloudflare Pages，按 README 要求留空构建命令和输出目录
+- 需要自托管、内网部署或更直接控制运行环境时选 Docker
+- 不再使用旧版 `frontend/dist`、`frontend/landing` 或 `_nuxt` 作为部署入口
