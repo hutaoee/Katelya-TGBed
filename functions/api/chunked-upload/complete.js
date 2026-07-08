@@ -386,7 +386,7 @@ async function uploadToTelegram(file, env) {
         const docData = await docResponse.json();
         if (docResponse.ok && docData.ok) {
           const fileId = pickTelegramFileId(docData);
-          if (!fileId) return { success: false, error: 'Failed to get Telegram file ID' };
+          if (!fileId) return { success: false, error: 'Telegram 已接收文件，但未返回可用的文件 ID' };
           return {
             success: true,
             fileId,
@@ -394,11 +394,11 @@ async function uploadToTelegram(file, env) {
           };
         }
       }
-      return { success: false, error: data.description || 'Upload failed' };
+      return { success: false, error: data.description || '上传失败' };
     }
 
     const fileId = pickTelegramFileId(data);
-    if (!fileId) return { success: false, error: 'Failed to get Telegram file ID' };
+    if (!fileId) return { success: false, error: 'Telegram 已接收文件，但未返回可用的文件 ID' };
     return {
       success: true,
       fileId,

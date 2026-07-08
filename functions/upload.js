@@ -58,7 +58,7 @@ export async function onRequestPost(context) {
 
     const uploadFile = formData.get("file");
     if (!uploadFile) {
-      throw new Error("No file uploaded");
+      throw new Error("未选择上传文件");
     }
 
     const fileName = String(uploadFile.name || "upload.bin");
@@ -88,32 +88,32 @@ export async function onRequestPost(context) {
 
     if (storageMode === "r2") {
       if (!env.R2_BUCKET) {
-        return errorResponse("R2 is not configured.");
+        return errorResponse("R2 未配置。");
       }
       result = await uploadToR2(uploadFile, fileName, fileExtension, env, folderPath);
     } else if (storageMode === "s3") {
       if (!env.S3_ENDPOINT || !env.S3_ACCESS_KEY_ID) {
-        return errorResponse("S3 is not configured.");
+        return errorResponse("S3 未配置。");
       }
       result = await uploadToS3(uploadFile, fileName, fileExtension, env, folderPath);
     } else if (storageMode === "discord") {
       if (!env.DISCORD_WEBHOOK_URL && !env.DISCORD_BOT_TOKEN) {
-        return errorResponse("Discord is not configured.");
+        return errorResponse("Discord 未配置。");
       }
       result = await uploadToDiscordStorage(uploadFile, fileName, fileExtension, env, folderPath);
     } else if (storageMode === "huggingface") {
       if (!hasHuggingFaceConfig(env)) {
-        return errorResponse("HuggingFace is not configured.");
+        return errorResponse("HuggingFace 未配置。");
       }
       result = await uploadToHFStorage(uploadFile, fileName, fileExtension, env, folderPath);
     } else if (storageMode === "webdav") {
       if (!hasWebDAVConfig(env)) {
-        return errorResponse("WebDAV is not configured.");
+        return errorResponse("WebDAV 未配置。");
       }
       result = await uploadToWebDAVStorage(uploadFile, fileName, fileExtension, env, folderPath);
     } else if (storageMode === "github") {
       if (!hasGitHubConfig(env)) {
-        return errorResponse("GitHub is not configured.");
+        return errorResponse("GitHub 未配置。");
       }
       result = await uploadToGitHubStorage(uploadFile, fileName, fileExtension, env, folderPath);
     } else {
@@ -167,22 +167,22 @@ function validateDirectUpload(storageMode, fileSize) {
     telegram: {
       maxBytes: 20 * MB,
       status: 413,
-      message: "Telegram web upload on Cloudflare Pages is limited to 20MB. Use R2/S3/WebDAV/GitHub for larger browser uploads, or send the file to Telegram and use webhook return links.",
+      message: "Cloudflare Pages 上的 Telegram 网页上传限制为 20MB。较大的浏览器上传请使用 R2、S3、WebDAV 或 GitHub，或直接把文件发到 Telegram 后使用 Webhook 回链。",
     },
     discord: {
       maxBytes: 25 * MB,
       status: 413,
-      message: "Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.",
+      message: "Discord 上传上限受服务器加成影响，K-Vault 默认按 25MB 保守处理。",
     },
     huggingface: {
       maxBytes: 35 * MB,
       status: 413,
       message: "HuggingFace regular upload is capped at 35MB in K-Vault. Use another storage backend for larger files.",
     },
-    r2: { maxBytes: 100 * MB, status: 413, message: "R2 upload limit is 100MB." },
-    s3: { maxBytes: 100 * MB, status: 413, message: "S3 upload limit is 100MB." },
-    webdav: { maxBytes: 100 * MB, status: 413, message: "WebDAV upload limit is 100MB." },
-    github: { maxBytes: 100 * MB, status: 413, message: "GitHub upload limit is 100MB." },
+    r2: { maxBytes: 100 * MB, status: 413, message: "R2 上传上限为 100MB。" },
+    s3: { maxBytes: 100 * MB, status: 413, message: "S3 上传上限为 100MB。" },
+    webdav: { maxBytes: 100 * MB, status: 413, message: "WebDAV 上传上限为 100MB。" },
+    github: { maxBytes: 100 * MB, status: 413, message: "GitHub 上传上限为 100MB。" },
   };
   const limit = limits[storageMode] || limits.telegram;
   if (Number(fileSize || 0) > limit.maxBytes) {
@@ -257,7 +257,7 @@ async function uploadToTelegramStorage(
   const messageId = result.messageId || result.data?.result?.message_id;
 
   if (!fileId) {
-    throw new Error("Failed to get file ID");
+    throw new Error("Telegram 已接收文件，但未返回可用的文件 ID。");
   }
 
   const directId = await buildTelegramDirectId(
@@ -355,7 +355,7 @@ async function sendToTelegram(formData, apiEndpoint, env, retryCount = 0) {
     }
 
     if (response.status === 413) {
-      return { success: false, error: "Telegram file size limit exceeded." };
+      return { success: false, error: "Telegram 文件大小超过限制。" };
     }
 
     if (retryCount < maxRetries && apiEndpoint === "sendAudio") {
@@ -367,7 +367,7 @@ async function sendToTelegram(formData, apiEndpoint, env, retryCount = 0) {
 
     return {
       success: false,
-      error: responseData.description || "Upload to Telegram failed",
+      error: responseData.description || "上传到 Telegram 失败",
     };
   } catch (error) {
     if (error.name === "AbortError") {
@@ -375,14 +375,14 @@ async function sendToTelegram(formData, apiEndpoint, env, retryCount = 0) {
         await new Promise((resolve) => setTimeout(resolve, 2000 * (retryCount + 1)));
         return sendToTelegram(formData, apiEndpoint, env, retryCount + 1);
       }
-      return { success: false, error: "Telegram request timed out." };
+      return { success: false, error: "Telegram 请求超时。" };
     }
 
     if (retryCount < maxRetries) {
       await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
       return sendToTelegram(formData, apiEndpoint, env, retryCount + 1);
     }
-    return { success: false, error: "Network error while uploading to Telegram." };
+    return { success: false, error: "上传到 Telegram 时网络异常。" };
   }
 }
 

@@ -118,4 +118,67 @@ describe('Docker runtime API v1 parity', function () {
       'http://localhost/file/sample-file.txt?password=secret'
     );
   });
+
+  it('moves files by stable id or unique display name without changing public links', async function () {
+    const db = initDatabase(process.env.DB_PATH);
+    const config = loadConfig(process.env);
+    const storageRepo = new StorageConfigRepository(db, config);
+    const storage = storageRepo.create({
+      name: 'Telegram Test',
+      type: 'telegram',
+      config: { botToken: 'token', chatId: 'chat' },
+      enabled: true,
+      isDefault: true,
+    });
+    const fileRepo = new FileRepository(db);
+    fileRepo.create({
+      id: 'telegram-stable-id',
+      storageConfigId: storage.id,
+      storageType: 'telegram',
+      storageKey: 'telegram-stable-id',
+      fileName: 'photo-display-name.webp',
+      fileSize: 12,
+      mimeType: 'image/webp',
+    });
+
+    const app = createApp();
+    const moveResponse = await app.fetch(new Request('http://localhost/api/manage/files/move-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: [{ fileName: 'photo-display-name.webp' }],
+        targetFolderPath: '图片',
+      }),
+    }));
+    await expectStatus(moveResponse, 200);
+    const movePayload = await moveResponse.json();
+    assert.strictEqual(movePayload.moved, 1);
+
+    const moved = fileRepo.getById('telegram-stable-id');
+    assert.strictEqual(moved.metadata.folderPath, '图片');
+    assert.strictEqual(moved.id, 'telegram-stable-id');
+    assert.strictEqual(`/file/${moved.id}`, '/file/telegram-stable-id');
+
+    const foldersResponse = await app.fetch(new Request('http://localhost/api/manage/folders'));
+    await expectStatus(foldersResponse, 200);
+    const foldersPayload = await foldersResponse.json();
+    assert.ok(foldersPayload.folders.some((folder) => folder.path === '图片'));
+  });
+
+  it('rejects folder moves when no requested files can be resolved', async function () {
+    const app = createApp();
+    const moveResponse = await app.fetch(new Request('http://localhost/api/manage/files/move-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ids: ['missing-file-id'],
+        targetFolderPath: '图片',
+      }),
+    }));
+
+    await expectStatus(moveResponse, 404);
+    const payload = await moveResponse.json();
+    assert.strictEqual(payload.success, false);
+    assert.match(payload.error, /没有找到可移动的文件/);
+  });
 });

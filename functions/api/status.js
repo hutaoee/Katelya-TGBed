@@ -308,7 +308,7 @@ function getUploadLimits() {
       maxBytes: DIRECT_UPLOAD_THRESHOLD,
       directThreshold: DIRECT_UPLOAD_THRESHOLD,
       supportsChunkUpload: false,
-      message: 'Telegram web upload on Cloudflare Pages is limited to 20MB. Use R2/S3/WebDAV/GitHub for larger browser uploads, or send the file to Telegram and use webhook return links.',
+      message: 'Cloudflare Pages 上的 Telegram 网页上传限制为 20MB。较大的浏览器上传请使用 R2、S3、WebDAV 或 GitHub，或直接把文件发到 Telegram 后使用 Webhook 回链。',
     },
     r2: {
       maxBytes: CHUNK_UPLOAD_LIMIT,
@@ -324,7 +324,7 @@ function getUploadLimits() {
       maxBytes: 25 * MB,
       directThreshold: DIRECT_UPLOAD_THRESHOLD,
       supportsChunkUpload: true,
-      message: 'Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.',
+      message: 'Discord 上传上限受服务器加成影响，K-Vault 默认按 25MB 保守处理。',
     },
     huggingface: {
       maxBytes: 35 * MB,

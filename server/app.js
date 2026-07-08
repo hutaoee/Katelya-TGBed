@@ -138,6 +138,42 @@ function createApp() {
     return '';
   }
 
+  function normalizeMoveIdentifier(value) {
+    const raw = asString(value).trim();
+    if (!raw) return '';
+    let decoded = raw;
+    try {
+      decoded = decodeURIComponent(raw);
+    } catch {
+      decoded = raw;
+    }
+    return decoded
+      .replace(/^https?:\/\/[^/]+\/file\//i, '')
+      .replace(/^\/?file\//i, '')
+      .trim();
+  }
+
+  function collectMoveIdentifiers(body = {}) {
+    const values = [];
+    if (Array.isArray(body.ids)) values.push(...body.ids);
+    if (Array.isArray(body.files)) {
+      for (const file of body.files) {
+        if (!file || typeof file !== 'object') continue;
+        values.push(
+          file.id,
+          file.name,
+          file.key,
+          file.fileId,
+          file.fileName,
+          file.metadata?.id,
+          file.metadata?.fileId,
+          file.metadata?.fileName
+        );
+      }
+    }
+    return Array.from(new Set(values.map(normalizeMoveIdentifier).filter(Boolean)));
+  }
+
   function parseBoundedInt(value, fallback, min = 1, max = 1000) {
     const parsed = Number.parseInt(String(value || ''), 10);
     if (!Number.isFinite(parsed)) return fallback;
@@ -613,8 +649,8 @@ function createApp() {
 
   function normalizeUploadError(c, error, fallbackStatus = 500) {
     const payload = toStorageErrorPayload(error, error?.status || fallbackStatus);
-    const detail = payload.detail || payload.message || 'Upload failed.';
-    const message = payload.message || 'Upload failed.';
+    const detail = payload.detail || payload.message || '上传失败。';
+    const message = payload.message || '上传失败。';
     const code = payload.code || 'UPLOAD_FAILED';
     const retriable = payload.retriable === true;
 
@@ -684,7 +720,7 @@ function createApp() {
       if (bootstrap?.botToken) tgConfig = bootstrap;
     }
     if (!tgConfig?.botToken) {
-      return c.text('Telegram storage not configured.', 500);
+      return c.text('Telegram 存储未配置。', 500);
     }
 
     const { TelegramStorageAdapter } = require('./lib/storage/adapters/telegram');
@@ -701,7 +737,7 @@ function createApp() {
     });
 
     if (!upstream) {
-      return c.text('File not found on Telegram.', 404);
+      return c.text('Telegram 中未找到该文件。', 404);
     }
 
     const headers = new Headers(upstream.headers);
@@ -756,7 +792,7 @@ function createApp() {
         maxBytes: Math.min(maxUploadSize, 50 * mb),
         directThreshold,
         supportsChunkUpload: true,
-        message: 'Telegram Bot API upload is capped at 50MB in the Docker runtime. For larger files, use R2/S3/WebDAV/GitHub or Telegram client + webhook return links.',
+        message: 'Docker 运行时的 Telegram Bot API 上传上限为 50MB。较大的文件请使用 R2、S3、WebDAV、GitHub，或通过 Telegram 客户端上传后使用 Webhook 回链。',
       },
       r2: {
         maxBytes: maxUploadSize,
@@ -772,7 +808,7 @@ function createApp() {
         maxBytes: Math.min(maxUploadSize, 25 * mb),
         directThreshold,
         supportsChunkUpload: true,
-        message: 'Discord upload limit depends on server boost level; K-Vault uses a conservative 25MB default.',
+        message: 'Discord 上传上限受服务器加成影响，K-Vault 默认按 25MB 保守处理。',
       },
       huggingface: {
         maxBytes: Math.min(maxUploadSize, 35 * mb),
@@ -1811,7 +1847,7 @@ function createApp() {
     const body = await c.req.parseBody();
     const file = body.file;
     if (!(file instanceof File)) {
-      return jsonError(c, 400, 'NO_FILE', 'No file uploaded.', 'Multipart body missing "file".');
+      return jsonError(c, 400, 'NO_FILE', '未选择上传文件。', 'Multipart body 缺少 "file" 字段。');
     }
 
     const fileBuffer = await file.arrayBuffer();
@@ -1822,15 +1858,15 @@ function createApp() {
         c,
         413,
         'FILE_TOO_LARGE',
-        'File exceeds upload size limit.',
-        `Upload limit is ${Math.floor(container.config.uploadMaxSize / 1024 / 1024)}MB.`
+        '文件超过上传大小限制。',
+        `上传上限为 ${Math.floor(container.config.uploadMaxSize / 1024 / 1024)}MB。`
       );
     }
 
     if (!auth.authenticated) {
       const guestCheck = guestService.checkUploadAllowed(c.req.raw, fileSize);
       if (!guestCheck.allowed) {
-        return jsonError(c, guestCheck.status || 403, 'GUEST_REJECTED', 'Guest upload is not allowed.', guestCheck.reason);
+        return jsonError(c, guestCheck.status || 403, 'GUEST_REJECTED', '访客上传未通过限制检查。', guestCheck.reason);
       }
     }
 
@@ -1842,8 +1878,8 @@ function createApp() {
         c,
         413,
         'STORAGE_FILE_TOO_LARGE',
-        'File exceeds selected storage limit.',
-        uploadLimit.message || `Selected storage limit is ${Math.floor(uploadLimit.maxBytes / 1024 / 1024)}MB.`
+        '文件超过当前存储上限。',
+        uploadLimit.message || `当前存储上限为 ${Math.floor(uploadLimit.maxBytes / 1024 / 1024)}MB。`
       );
     }
 
@@ -1876,13 +1912,13 @@ function createApp() {
     const payload = await c.req.json().catch(() => ({}));
 
     if (!payload.url) {
-      return jsonError(c, 400, 'URL_REQUIRED', 'url is required.', 'Missing request body field "url".');
+      return jsonError(c, 400, 'URL_REQUIRED', '请输入 URL。', '请求体缺少 "url" 字段。');
     }
 
     if (!auth.authenticated) {
       const guestCheck = guestService.checkUploadAllowed(c.req.raw, 0);
       if (!guestCheck.allowed) {
-        return jsonError(c, guestCheck.status || 403, 'GUEST_REJECTED', 'Guest upload is not allowed.', guestCheck.reason);
+        return jsonError(c, guestCheck.status || 403, 'GUEST_REJECTED', '访客上传未通过限制检查。', guestCheck.reason);
       }
     }
 
@@ -2494,10 +2530,19 @@ function createApp() {
 
     const { fileRepo } = getServices(c);
     const body = await c.req.json().catch(() => ({}));
-    const ids = Array.isArray(body.ids) ? body.ids : [];
+    const ids = collectMoveIdentifiers(body);
     const targetFolderPath = normalizeFolderPath(body.targetFolderPath || body.path || '');
 
     const result = fileRepo.moveFiles(ids, targetFolderPath);
+    if (result.moved === 0) {
+      return jsonError(
+        c,
+        404,
+        'FILES_NOT_MOVED',
+        '没有找到可移动的文件，目录未变更。',
+        '请刷新文件列表后重试。'
+      );
+    }
     return c.json({
       success: true,
       ...result,
@@ -2509,10 +2554,19 @@ function createApp() {
 
     const { fileRepo } = getServices(c);
     const body = await c.req.json().catch(() => ({}));
-    const ids = Array.isArray(body.ids) ? body.ids : [];
+    const ids = collectMoveIdentifiers(body);
     const targetFolderPath = normalizeFolderPath(body.targetFolderPath || body.folderPath || body.path || '');
 
     const result = fileRepo.moveFiles(ids, targetFolderPath);
+    if (result.moved === 0) {
+      return jsonError(
+        c,
+        404,
+        'FILES_NOT_MOVED',
+        '没有找到可移动的文件，目录未变更。',
+        '请刷新文件列表后重试。'
+      );
+    }
     return c.json({
       success: true,
       ...result,
