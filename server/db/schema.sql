@@ -91,7 +91,9 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   token_salt TEXT NOT NULL,
   token_hash TEXT NOT NULL,
   token_suffix TEXT NOT NULL,
-  token_preview TEXT NOT NULL
+  token_preview TEXT NOT NULL,
+  policies_json TEXT,
+  rotated_at INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_tokens_created_at ON api_tokens(created_at DESC);
@@ -118,3 +120,55 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- API Token platform (per-token policies, telemetry, audit, idempotency, dedup)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS token_stats (
+  token_id TEXT PRIMARY KEY,
+  last_used_at INTEGER,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  last_success_at INTEGER,
+  last_failure_at INTEGER,
+  last_operation TEXT,
+  last_client TEXT,
+  last_touch_at INTEGER,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event TEXT NOT NULL,
+  token_id TEXT,
+  operation TEXT,
+  timestamp INTEGER NOT NULL,
+  success INTEGER NOT NULL DEFAULT 1,
+  client TEXT,
+  detail TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  key TEXT PRIMARY KEY,
+  token_id TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  status_code INTEGER NOT NULL DEFAULT 200,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at ON idempotency_keys(expires_at);
+
+CREATE TABLE IF NOT EXISTS sha_dedup_index (
+  sha256 TEXT PRIMARY KEY,
+  file_id TEXT NOT NULL,
+  file_name TEXT,
+  storage_type TEXT,
+  file_size INTEGER,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sha_dedup_index_expires_at ON sha_dedup_index(expires_at);

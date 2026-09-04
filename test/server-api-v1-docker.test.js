@@ -44,11 +44,16 @@ describe('Docker runtime API v1 parity', function () {
   }
 
   it('creates admin API tokens and uses them for paste endpoints', async function () {
+    // Requirement #1: the admin API fails closed when auth is unconfigured;
+    // this legacy parity test now authenticates like a real admin client.
+    process.env.BASIC_USER = 'admin';
+    process.env.BASIC_PASS = 'docker-parity-pass';
+    const adminAuth = `Basic ${Buffer.from('admin:docker-parity-pass').toString('base64')}`;
     const app = createApp();
 
     const createTokenResponse = await app.fetch(new Request('http://localhost/api/admin/tokens', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: adminAuth },
       body: JSON.stringify({ name: 'smoke', scopes: ['paste', 'read', 'delete'] }),
     }));
     await expectStatus(createTokenResponse, 201);

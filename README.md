@@ -333,7 +333,7 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 - `TELEGRAM_LINK_MODE=signed`（仅 Telegram 文件使用签名直链）
 - 或 `MINIMIZE_KV_WRITES=true`（同时影响分片上传任务写入策略）
 
-启用后，Telegram 文件默认仍会写入轻量 KV 索引（用于后台列表和管理操作），下载时通过签名参数直接解析 `file_id`，从而降低 KV 读写压力。
+启用后，Telegram 文件默认仍会写入轻量 KV 索引（用于后台列表和管理操作），下载时通过签名参数直接解析 `file_id`，从而降低 KV 读写压力。设置 `TELEGRAM_METADATA_MODE=off` 时，签名 Telegram 上传会跳过 API 上传后的 KV 元数据探测：`password`、`expires_in`、`max_downloads`、`slug` 会被忽略，响应也不提供删除链接。设置 `MINIMIZE_KV_WRITES=true` 时，API Token 鉴权仍需读取 KV，但 `lastUsedAt` 仅在首次使用及之后至少间隔一小时才写回。
 
 > **可选取舍：** 若你希望 Telegram 文件完全不写入 KV，请额外设置 `TELEGRAM_METADATA_MODE=off`。此时文件不会出现在后台列表，也无法使用依赖 KV 元数据的标签/黑白名单/删除流程。
 
@@ -743,6 +743,17 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 2. 点击工具箱菜单中的 **API Token 管理**
 3. 创建 Token 时按需选择权限：`upload` / `read` / `delete` / `paste`，并设置过期时间
 
+**Admin API 方式**（未配置 `BASIC_USER`/`BASIC_PASS` 时 admin API fail-closed，返回 503）：
+
+```bash
+curl -X POST "https://your-kvault-domain/api/admin/tokens" \
+  -u "$BASIC_USER:$BASIC_PASS" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"blog-bot","scopes":["upload","read"],"policies":{"folderPrefix":"blog"}}'
+```
+
+> ⚠️ **密钥仅此一次返回**：响应中的 `token` 字段即完整密钥（`kvault_<id>_<secret>`），创建后无法再次查看，请立即妥善保存。轮换（rotate）后旧密钥立即失效。
+
 ### 2. 常用示例
 
 **curl 上传文件：**
@@ -806,6 +817,71 @@ kvault() {
 | GET | `/api/v1/paste/:id` | `read` | 获取粘贴内容 |
 | DELETE | `/api/v1/paste/:id` | `delete` | 删除粘贴 |
 
+### 5. Token 体系与安全特性
+
+K-Vault 内置面向机器客户端（GitHub Actions、Coze Agent、ShareX、自动化脚本、未来 MCP Agent）的长期 API Token 体系，与网页登录态完全隔离。完整接入指南见 [docs/agent-integration.md](docs/agent-integration.md)，机器可读接口定义见 [docs/openapi.yaml](docs/openapi.yaml)。
+
+| 能力 | 说明 |
+| --- | --- |
+| 凭据隔离 | Token 与网页登录态完全隔离，可随时吊销或轮换 |
+| 最小授权 | `scopes` 按需授权 + `policies` 限定存储后端 / 目录 / 大小 |
+| 幂等重试 | `Idempotency-Key` 24 小时内自动去重，网络重试不产生重复文件 |
+| 安全防护 | 远程导入内置 SSRF 防护，管理面未配置凭据时 fail-closed |
+| 审计追踪 | 每次调用记录最后使用时间、操作类型与客户端标签 |
+
+### 6. Scopes 与策略
+
+| Scope | 能力 |
+| --- | --- |
+| `upload` | 上传文件 / URL 导入 |
+| `read` | 列出与读取文件 |
+| `delete` | 删除文件 |
+| `paste` | 创建 Paste |
+
+可选策略（创建或编辑 Token 时按需组合）：
+
+- `allowedStorages`：限定可用存储后端，防止 Token 越权使用昂贵存储
+- `folderPrefix`：限定目录前缀，适合按业务线隔离文件
+- `maxFileSize`：单文件大小上限，管理界面按 MB 填写
+
+策略校验不通过时返回 `403 POLICY_DENIED` 或 `413 POLICY_FILE_TOO_LARGE`。
+
+### 7. 进阶示例：幂等与 URL 导入
+
+以下示例假设已导出环境变量 `KVAULT_API_TOKEN`（值为创建 Token 时保存的密钥），幂等键建议使用业务唯一标识（如内容哈希或文章编号）：
+
+```bash
+# 上传文件（≤25MB 重复内容自动去重）
+curl -X POST "https://your-kvault-domain/api/v1/upload" \
+  -H "Authorization: Bearer $KVAULT_API_TOKEN" \
+  -H "Idempotency-Key: post-42-cover" \
+  -F "file=@./photo.png" -F "storage=telegram" -F "folderPath=blog/2026"
+
+# 远程 URL 导入（内置 SSRF 防护）
+curl -X POST "https://your-kvault-domain/api/v1/import" \
+  -H "Authorization: Bearer $KVAULT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://cdn.example.com/cover.jpg","storage":"r2"}'
+
+# 列出 / 查询 / 删除
+curl -H "Authorization: Bearer $KVAULT_API_TOKEN" "https://your-kvault-domain/api/v1/files?limit=50"
+curl -H "Authorization: Bearer $KVAULT_API_TOKEN" "https://your-kvault-domain/api/v1/file/<id>/info"
+curl -X DELETE -H "Authorization: Bearer $KVAULT_API_TOKEN" "https://your-kvault-domain/api/v1/file/<id>"
+```
+
+> 💡 重复携带同一 `Idempotency-Key` 的上传/导入会在 **24 小时内返回首次响应**（响应头 `Idempotency-Replayed: true`），网络抖动重试不会产生重复文件。
+
+### 8. 跨域配置：API_CORS_ORIGINS
+
+浏览器直连 API 的前端需要显式跨域白名单（服务端环境变量）：
+
+```
+API_CORS_ORIGINS=https://app.example.com,https://dashboard.example.com
+```
+
+- 逗号分隔，末尾斜杠自动归一化；未配置时不返回任何 CORS 头，纯服务端调用不受影响。
+- 预检（OPTIONS）仅放行白名单来源，允许 `Authorization`、`Content-Type`、`Idempotency-Key` 请求头。
+
 ---
 
 ## 相关链接
@@ -835,8 +911,10 @@ K-Vault 并非对上述项目的简单复制，而是在相关开源生态、社
 
 MIT License
 
+
 ---
+
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=katelya77/K-Vault&type=Date)](https://star-history.com/#katelya77/K-Vault&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=katelya77/K-Vault&type=Date)](https://star-history.dera.page/#katelya77/K-Vault&Date)

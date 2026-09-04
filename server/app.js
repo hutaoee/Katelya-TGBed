@@ -7,9 +7,21 @@ const { createContainer } = require('./lib/container');
 const { normalizeFolderPath } = require('./lib/repos/file-repo');
 const {
   getApiTokenScopes,
-  normalizeExpiresAt,
   parseBearerToken,
+  parseExpiryInput,
+  parseScopesStrict,
+  normalizePolicies,
+  VALID_STORAGES,
 } = require('./lib/repos/api-token-repo');
+const { run: dbRun, get: dbGet } = require('./db');
+const {
+  assertSafeRemoteUrl,
+  validateRedirectLocation,
+  sniffImageMime,
+  MAX_REDIRECTS,
+} = require('./lib/utils/ssrf-guard');
+const { AUDIT_EVENTS, writeAuditLog, listAuditLogs } = require('./lib/utils/audit');
+const { safeLogError } = require('./lib/utils/redact');
 const { toStorageErrorPayload } = require('./lib/utils/storage-error');
 const { createShareSignature, verifyShareSignature } = require('./lib/utils/share-link');
 const {
@@ -29,13 +41,41 @@ function createApp() {
   const app = new Hono();
   const container = createContainer(process.env);
 
-  app.use('*', cors({
-    origin: (origin) => origin || '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'Range', 'X-KVault-Client', 'Accept'],
-    exposeHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Disposition'],
-    credentials: true,
-  }));
+  const corsAllowedOrigins = String(process.env.API_CORS_ORIGINS || '')
+    .split(/[\s,]+/)
+    .map((item) => item.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  const corsAllowHeaders = 'Content-Type, Authorization, Accept, Range, Idempotency-Key, X-KVault-Client';
+
+  function originAllowed(origin) {
+    if (!origin) return false;
+    return corsAllowedOrigins.includes(origin.replace(/\/+$/, ''));
+  }
+
+  // Requirement #3: unified API CORS with an allow-list (API_CORS_ORIGINS).
+  // Unlisted origins get no CORS headers. Preflight (OPTIONS) never requires
+  // a Bearer token and always answers 204 with Vary: Origin.
+  app.use('/api/*', async (c, next) => {
+    const origin = c.req.header('Origin') || '';
+    if (c.req.method === 'OPTIONS') {
+      const response = new Response(null, { status: 204 });
+      response.headers.set('Vary', 'Origin');
+      response.headers.set('Access-Control-Max-Age', '86400');
+      if (originAllowed(origin)) {
+        response.headers.set('Access-Control-Allow-Origin', origin);
+        response.headers.set('Access-Control-Allow-Credentials', 'true');
+        response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        response.headers.set('Access-Control-Allow-Headers', c.req.header('Access-Control-Request-Headers') || corsAllowHeaders);
+      }
+      return response;
+    }
+    await next();
+    if (originAllowed(origin) && c.res) {
+      c.res.headers.set('Access-Control-Allow-Origin', origin);
+      c.res.headers.set('Access-Control-Allow-Credentials', 'true');
+      c.res.headers.append('Vary', 'Origin');
+    }
+  });
 
   app.use('*', async (c, next) => {
     const traceId = crypto.randomUUID();
@@ -45,7 +85,7 @@ function createApp() {
     try {
       await next();
     } catch (error) {
-      console.error(error);
+      safeLogError(error);
       const payload = toStorageErrorPayload(error, 500);
       const envelope = {
         success: false,
@@ -200,6 +240,305 @@ function createApp() {
     return null;
   }
 
+  // Requirement #1: the admin API fails closed when auth is not configured.
+  function requireAdminAuth(c) {
+    const { authService } = getServices(c);
+    if (!authService.isAuthRequired()) {
+      return apiV1Error('ADMIN_AUTH_NOT_CONFIGURED', 'Admin authentication is not configured.', 503, {
+        detail: 'Set BASIC_USER and BASIC_PASS to enable the admin API. The admin API fails closed.',
+      });
+    }
+    const result = authResult(c);
+    if (!result.authenticated) {
+      return apiV1Error('UNAUTHORIZED', 'Authentication required.', 401, { detail: result.reason || 'Unauthorized' });
+    }
+    c.set('auth', result);
+    return null;
+  }
+
+  function tokenErrorResponse(c, error, fallbackCode, fallbackMessage) {
+    const code = error?.code || fallbackCode;
+    if (code === 'INVALID_SCOPE') {
+      return apiV1Error('INVALID_SCOPE', error.message || 'Invalid scopes.', 400, {
+        invalidScopes: Array.isArray(error.invalidScopes) ? error.invalidScopes : [],
+      });
+    }
+    if (code === 'INVALID_EXPIRY') {
+      return apiV1Error('INVALID_EXPIRY', error.message || 'Invalid expiry.', 400);
+    }
+    if (code === 'INVALID_POLICY') {
+      return apiV1Error('INVALID_POLICY', error.message || 'Invalid policies.', 400, {
+        invalidStorages: Array.isArray(error.invalidStorages) ? error.invalidStorages : undefined,
+        invalidMimeTypes: Array.isArray(error.invalidMimeTypes) ? error.invalidMimeTypes : undefined,
+        invalidHosts: Array.isArray(error.invalidHosts) ? error.invalidHosts : undefined,
+      });
+    }
+    return apiV1Error(code, error?.message || fallbackMessage, 400);
+  }
+
+  // Requirement #10: per-token policy enforcement.
+  function enforceTokenPolicy(c, { storage = '', mimeType = null, fileSize = null, folderPath = '', checkSourceHost = false } = {}) {
+    const token = c.get('apiToken');
+    const policies = token?.policies;
+    if (!policies) return null;
+
+    if (Array.isArray(policies.allowedStorages) && policies.allowedStorages.length > 0 && storage) {
+      if (!policies.allowedStorages.includes(storage)) {
+        return apiV1Error('POLICY_DENIED', `Token policy does not allow storage "${storage}".`, 403, {
+          allowedStorages: policies.allowedStorages,
+        });
+      }
+    }
+    if (Array.isArray(policies.allowedMimeTypes) && policies.allowedMimeTypes.length > 0 && mimeType) {
+      if (!policies.allowedMimeTypes.includes(String(mimeType).toLowerCase())) {
+        return apiV1Error('POLICY_DENIED', `Token policy does not allow MIME type "${mimeType}".`, 403, {
+          allowedMimeTypes: policies.allowedMimeTypes,
+        });
+      }
+    }
+    if (policies.maxFileSize != null && fileSize != null && Number(fileSize) > Number(policies.maxFileSize)) {
+      return apiV1Error('POLICY_FILE_TOO_LARGE', `File exceeds the token policy limit (${policies.maxFileSize} bytes).`, 413);
+    }
+    if (policies.folderPrefix) {
+      const prefix = String(policies.folderPrefix).replace(/\/+$/, '');
+      const folder = String(folderPath || '');
+      if (folder !== prefix && !folder.startsWith(`${prefix}/`)) {
+        return apiV1Error('POLICY_DENIED', `folderPath must start with "${prefix}".`, 403);
+      }
+    }
+    if (checkSourceHost && Array.isArray(policies.allowedSourceHosts) && policies.allowedSourceHosts.length > 0) {
+      const origin = c.req.header('Origin') || '';
+      const referer = c.req.header('Referer') || '';
+      let sourceHost = '';
+      try {
+        if (referer) sourceHost = new URL(referer).hostname.toLowerCase();
+        else if (origin) sourceHost = new URL(origin).hostname.toLowerCase();
+      } catch {
+        sourceHost = '';
+      }
+      if (!sourceHost || !policies.allowedSourceHosts.includes(sourceHost)) {
+        return apiV1Error('POLICY_DENIED', `Source host "${sourceHost || 'unknown'}" is not allowed by token policy.`, 403);
+      }
+    }
+    return null;
+  }
+
+  // Binary-safe SHA-256 (app-level sha256Hex stringifies its input).
+  function sha256HexBytes(data) {
+    return crypto.createHash('sha256').update(data).digest('hex');
+  }
+
+  // Requirement #11: Idempotency-Key replay helpers.
+  function findIdempotentResponse(db, cacheKey) {
+    try {
+      const row = dbGet(db, 'SELECT response_json, status_code FROM idempotency_keys WHERE key = ? AND expires_at > ?', [cacheKey, Date.now()]);
+      if (!row) return null;
+      try {
+        return { payload: JSON.parse(row.response_json), status: Number(row.status_code || 200) };
+      } catch {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  function saveIdempotentResponse(db, cacheKey, payload, status = 200) {
+    try {
+      const tokenId = String(cacheKey).split(':')[0];
+      dbRun(
+        db,
+        `INSERT INTO idempotency_keys(key, token_id, response_json, status_code, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(key) DO NOTHING`,
+        [cacheKey, tokenId, JSON.stringify(payload), Number(status || 200), Date.now(), Date.now() + 24 * 3600 * 1000]
+      );
+    } catch (error) {
+      safeLogError(error);
+    }
+  }
+
+  function findDeduplicatedFile(db, fileRepo, contentSha256) {
+    try {
+      const row = dbGet(db, 'SELECT file_id FROM sha_dedup_index WHERE sha256 = ? AND expires_at > ?', [contentSha256, Date.now()]);
+      if (!row) return null;
+      return fileRepo.getById(row.file_id) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveShaDedupIndex(db, contentSha256, fileRecord) {
+    if (!contentSha256 || !fileRecord?.id) return;
+    try {
+      dbRun(
+        db,
+        `INSERT INTO sha_dedup_index(sha256, file_id, file_name, storage_type, file_size, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(sha256) DO NOTHING`,
+        [
+          contentSha256,
+          fileRecord.id,
+          fileRecord.file_name || '',
+          fileRecord.storage_type || '',
+          Number(fileRecord.file_size || 0),
+          Date.now(),
+          Date.now() + 90 * 24 * 3600 * 1000,
+        ]
+      );
+    } catch (error) {
+      safeLogError(error);
+    }
+  }
+
+  const IMPORT_STORAGE_LIMITS = {
+    discord: 25 * 1024 * 1024,
+    huggingface: 35 * 1024 * 1024,
+    telegram: 50 * 1024 * 1024,
+  };
+  const DEDUP_MAX_BYTES = 25 * 1024 * 1024;
+  const IMPORT_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp', 'image/x-icon']);
+
+  function buildImportFileName(rawUrl, mime) {
+    let name = '';
+    try {
+      const parsed = new URL(rawUrl);
+      name = decodeURIComponent(parsed.pathname.split('/').pop() || '');
+    } catch {
+      name = '';
+    }
+    name = String(name || '').replace(/[^\w.-]+/g, '_').replace(/^\.+/, '').slice(0, 120);
+    const extensions = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+      'image/avif': '.avif',
+      'image/gif': '.gif',
+      'image/bmp': '.bmp',
+      'image/x-icon': '.ico',
+    };
+    const expectedExt = extensions[mime] || '';
+    if (!name || !path.extname(name)) {
+      name = (name || 'imported-image') + expectedExt;
+    }
+    return name || `imported-image${expectedExt}`;
+  }
+
+  // Requirement #6: SSRF-validated remote fetch for /api/v1/import.
+  // Every redirect hop is re-validated (DNS + literal rules); the body is
+  // streamed with a hard size cap; Content-Length alone is never trusted.
+  async function fetchRemoteImport(rawUrl, maxBytes) {
+    let currentUrl = String(rawUrl || '').trim();
+
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      const safety = await assertSafeRemoteUrl(currentUrl);
+      if (!safety.ok) {
+        const error = new Error(safety.message || 'Unsafe remote URL.');
+        error.code = safety.code || 'SSRF_BLOCKED';
+        error.status = safety.code === 'INVALID_URL' ? 400 : 403;
+        throw error;
+      }
+
+      let response;
+      try {
+        response = await fetch(currentUrl, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
+      } catch (error) {
+        const wrapped = new Error(`Failed to fetch remote URL: ${error?.message || 'network error'}`);
+        wrapped.code = 'IMPORT_FETCH_FAILED';
+        wrapped.status = 502;
+        throw wrapped;
+      }
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location') || '';
+        if (!location) {
+          const e = new Error('Remote server returned a redirect without a location.');
+          e.code = 'IMPORT_REDIRECT_INVALID';
+          e.status = 502;
+          throw e;
+        }
+        const redirectCheck = validateRedirectLocation(location, currentUrl);
+        if (!redirectCheck.ok) {
+          const e = new Error(redirectCheck.message || 'Unsafe redirect target.');
+          e.code = redirectCheck.code || 'SSRF_BLOCKED';
+          e.status = redirectCheck.code === 'INVALID_REDIRECT' ? 502 : 403;
+          throw e;
+        }
+        currentUrl = redirectCheck.url.href;
+        continue;
+      }
+
+      if (!response.ok) {
+        const e = new Error(`Remote server responded ${response.status}.`);
+        e.code = 'IMPORT_REMOTE_ERROR';
+        e.status = 502;
+        throw e;
+      }
+
+      const headerMime = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        const e = new Error('Remote file exceeds the import size limit.');
+        e.code = 'FILE_TOO_LARGE';
+        e.status = 413;
+        throw e;
+      }
+
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (received > maxBytes) {
+            const e = new Error('Remote file exceeds the import size limit.');
+            e.code = 'FILE_TOO_LARGE';
+            e.status = 413;
+            throw e;
+          }
+          chunks.push(Buffer.from(value));
+        }
+      } finally {
+        try { await reader.cancel(); } catch { /* already closed */ }
+      }
+
+      const bytes = Buffer.concat(chunks);
+
+      // SVG is rejected by default (XSS risk); sniff both header and bytes.
+      if (headerMime.includes('svg') || bytes.subarray(0, 512).toString('latin1').trimStart().startsWith('<svg')) {
+        const e = new Error('SVG files are not allowed for remote import.');
+        e.code = 'UNSUPPORTED_MEDIA_TYPE';
+        e.status = 415;
+        throw e;
+      }
+
+      const sniffed = sniffImageMime(bytes.subarray(0, 32));
+      if (!sniffed || !IMPORT_IMAGE_MIMES.has(sniffed)) {
+        const e = new Error('Remote content is not a supported image type.');
+        e.code = 'UNSUPPORTED_MEDIA_TYPE';
+        e.status = 415;
+        throw e;
+      }
+      if (headerMime.startsWith('image/') && headerMime !== sniffed && headerMime !== 'image/x-icon') {
+        const e = new Error(`Content-Type (${headerMime}) does not match detected content (${sniffed}).`);
+        e.code = 'MIME_MISMATCH';
+        e.status = 415;
+        throw e;
+      }
+
+      const fileName = buildImportFileName(currentUrl, sniffed);
+      const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      return { bytes, buffer: arrayBuffer, mime: sniffed, fileName, finalUrl: currentUrl };
+    }
+
+    const e = new Error(`Too many redirects (max ${MAX_REDIRECTS}).`);
+    e.code = 'IMPORT_TOO_MANY_REDIRECTS';
+    e.status = 502;
+    throw e;
+  }
+
   function apiV1Success(payload = {}, status = 200, headers = {}) {
     return new Response(
       JSON.stringify({
@@ -252,9 +591,15 @@ function createApp() {
     return Math.min(Math.max(parsed, min), max);
   }
 
+  // Requirement #8: strict expiry semantics (parity with Pages).
+  // Accepts expiresAtMs | ISO-8601 expiresAt | expires_in/expiresIn/expiresInDays seconds.
+  // Bare numeric expiresAt throws INVALID_EXPIRY (unit ambiguity).
   function normalizeExpiryInput(body = {}) {
+    if (Object.prototype.hasOwnProperty.call(body, 'expiresAtMs')) {
+      return parseExpiryInput({ expiresAtMs: body.expiresAtMs });
+    }
     if (Object.prototype.hasOwnProperty.call(body, 'expiresAt')) {
-      return normalizeExpiresAt(body.expiresAt);
+      return parseExpiryInput(body.expiresAt);
     }
     if (Object.prototype.hasOwnProperty.call(body, 'expires_in')) {
       const seconds = parsePositiveInt(body.expires_in, { defaultValue: 0, min: 1, max: 3650 * 24 * 3600 });
@@ -279,7 +624,10 @@ function createApp() {
     if (!pathname.startsWith(base)) return '';
     const subPath = pathname.slice(base.length) || '/';
 
+    if (method === 'GET' && subPath === '/me') return '@me';
+    if (method === 'GET' && subPath === '/capabilities') return ''; // public, no token required
     if (method === 'POST' && subPath === '/upload') return 'upload';
+    if (method === 'POST' && subPath === '/import') return 'upload';
     if (method === 'GET' && subPath === '/files') return 'read';
     if (method === 'GET' && /^\/file\/[^/]+$/.test(subPath)) return 'read';
     if (method === 'GET' && /^\/file\/[^/]+\/info$/.test(subPath)) return 'read';
@@ -298,8 +646,16 @@ function createApp() {
     const scope = requiredScope || resolveApiV1RequiredScope(c);
     if (!scope) return null;
 
-    const result = apiTokenRepo.verify(parseBearerToken(c.req.raw), scope);
+    const tokenValue = parseBearerToken(c.req.raw);
+    const result = apiTokenRepo.verify(tokenValue, scope);
     if (!result.ok) {
+      writeAuditLog(container.db, {
+        event: AUDIT_EVENTS.TOKEN_VERIFY_FAILED,
+        operation: String(scope || '').slice(0, 64),
+        success: false,
+        client: String(c.req.header('User-Agent') || '').slice(0, 80),
+        detail: result.code || 'TOKEN_INVALID',
+      });
       return apiV1Error(
         result.code || 'TOKEN_INVALID',
         result.message || 'API Token is invalid.',
@@ -307,8 +663,24 @@ function createApp() {
       );
     }
 
-    c.set('apiToken', result.token);
-    apiTokenRepo.touchLastUsed(result.token.id);
+    // Requirement #10: per-token rate limiting.
+    const rateLimit = apiTokenRepo.checkTokenRateLimit(result.token);
+    if (!rateLimit.allowed) {
+      return apiV1Error('RATE_LIMITED', 'Token rate limit exceeded.', 429, {
+        retryAfterMs: rateLimit.retryAfterMs,
+      }, { 'Retry-After': String(Math.ceil(rateLimit.retryAfterMs / 1000)) });
+    }
+
+    // Store a redacted public record on the context (no hash/salt/secret).
+    c.set('apiToken', apiTokenRepo.toPublicRecord(result.token));
+
+    const requestMethod = String(c.req.method || 'GET').toUpperCase();
+    const requestPath = new URL(c.req.url).pathname;
+    apiTokenRepo.touchApiTokenUsage(result.token.id, {
+      success: true,
+      operation: `${requestMethod} ${requestPath}`.slice(0, 64),
+      client: String(c.req.header('User-Agent') || '').slice(0, 80),
+    });
     return null;
   }
 
@@ -975,9 +1347,9 @@ function createApp() {
   app.get('/api/manage/logout', handleManageLogout);
   app.post('/api/manage/logout', handleManageLogout);
 
-  // --- Admin API Token management ---
+  // --- Admin API Token management (fail-closed, requirement #1) ---
   app.get('/api/admin/tokens', (c) => {
-    const unauthorized = requireAuth(c);
+    const unauthorized = requireAdminAuth(c);
     if (unauthorized) return unauthorized;
 
     const { apiTokenRepo } = getServices(c);
@@ -988,7 +1360,7 @@ function createApp() {
   });
 
   app.post('/api/admin/tokens', async (c) => {
-    const unauthorized = requireAuth(c);
+    const unauthorized = requireAdminAuth(c);
     if (unauthorized) return unauthorized;
 
     const { apiTokenRepo } = getServices(c);
@@ -1003,7 +1375,16 @@ function createApp() {
         name,
         scopes: body?.scopes || [],
         expiresAt: normalizeExpiryInput(body),
+        policies: body?.policies ?? null,
         enabled: body?.enabled !== false,
+      });
+
+      writeAuditLog(container.db, {
+        event: AUDIT_EVENTS.TOKEN_CREATED,
+        tokenId: created.record.id,
+        operation: 'create',
+        client: String(c.req.header('User-Agent') || '').slice(0, 80),
+        detail: `name=${created.record.name}; scopes=${created.record.scopes.join(',')}`,
       });
 
       return apiV1Success({
@@ -1011,12 +1392,12 @@ function createApp() {
         tokenInfo: created.record,
       }, 201);
     } catch (error) {
-      return apiV1Error('TOKEN_CREATE_FAILED', error.message || 'Failed to create API Token.', 400);
+      return tokenErrorResponse(c, error, 'TOKEN_CREATE_FAILED', 'Failed to create API Token.');
     }
   });
 
   app.patch('/api/admin/tokens/:id', async (c) => {
-    const unauthorized = requireAuth(c);
+    const unauthorized = requireAdminAuth(c);
     if (unauthorized) return unauthorized;
 
     const tokenId = decodePathParam(c.req.param('id'));
@@ -1035,12 +1416,17 @@ function createApp() {
     if (Object.prototype.hasOwnProperty.call(body, 'scopes')) {
       patch.scopes = body.scopes;
     }
-    if (Object.prototype.hasOwnProperty.call(body, 'expiresAt')) {
-      patch.expiresAt = normalizeExpiresAt(body.expiresAt);
+    if (Object.prototype.hasOwnProperty.call(body, 'expiresAtMs')) {
+      patch.expiresAt = parseExpiryInput({ expiresAtMs: body.expiresAtMs });
+    } else if (Object.prototype.hasOwnProperty.call(body, 'expiresAt')) {
+      patch.expiresAt = parseExpiryInput(body.expiresAt);
     }
     if (Object.prototype.hasOwnProperty.call(body, 'expires_in')) {
       const seconds = Number.parseInt(String(body.expires_in), 10);
       patch.expiresAt = Number.isFinite(seconds) && seconds > 0 ? Date.now() + seconds * 1000 : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'policies')) {
+      patch.policies = body.policies;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -1053,14 +1439,33 @@ function createApp() {
       if (!token) {
         return apiV1Error('TOKEN_NOT_FOUND', 'API Token not found.', 404);
       }
-      return apiV1Success({ token });
+
+      if (Object.prototype.hasOwnProperty.call(patch, 'enabled')) {
+        writeAuditLog(container.db, {
+          event: patch.enabled ? AUDIT_EVENTS.TOKEN_ENABLED : AUDIT_EVENTS.TOKEN_DISABLED,
+          tokenId,
+          operation: 'update',
+          client: String(c.req.header('User-Agent') || '').slice(0, 80),
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'scopes')) {
+        writeAuditLog(container.db, {
+          event: AUDIT_EVENTS.TOKEN_SCOPE_CHANGED,
+          tokenId,
+          operation: 'update',
+          client: String(c.req.header('User-Agent') || '').slice(0, 80),
+          detail: `scopes=${token.record.scopes.join(',')}`,
+        });
+      }
+
+      return apiV1Success({ token: token.record });
     } catch (error) {
-      return apiV1Error('TOKEN_UPDATE_FAILED', error.message || 'Failed to update API Token.', 400);
+      return tokenErrorResponse(c, error, 'TOKEN_UPDATE_FAILED', 'Failed to update API Token.');
     }
   });
 
   app.delete('/api/admin/tokens/:id', (c) => {
-    const unauthorized = requireAuth(c);
+    const unauthorized = requireAdminAuth(c);
     if (unauthorized) return unauthorized;
 
     const tokenId = decodePathParam(c.req.param('id'));
@@ -1072,7 +1477,50 @@ function createApp() {
     if (!apiTokenRepo.delete(tokenId)) {
       return apiV1Error('TOKEN_NOT_FOUND', 'API Token not found.', 404);
     }
+    writeAuditLog(container.db, {
+      event: AUDIT_EVENTS.TOKEN_DELETED,
+      tokenId,
+      operation: 'delete',
+      client: String(c.req.header('User-Agent') || '').slice(0, 80),
+    });
     return apiV1Success({ deleted: true });
+  });
+
+  // Requirement #7: rotate a token. The full new secret is returned exactly
+  // once; the old secret stops working immediately (stored hash changes).
+  app.post('/api/admin/tokens/:id/rotate', async (c) => {
+    const unauthorized = requireAdminAuth(c);
+    if (unauthorized) return unauthorized;
+
+    const tokenId = decodePathParam(c.req.param('id'));
+    if (!tokenId) {
+      return apiV1Error('VALIDATION_ERROR', 'Token id is required.', 400);
+    }
+
+    const { apiTokenRepo } = getServices(c);
+    try {
+      const rotated = apiTokenRepo.rotate(tokenId);
+      if (!rotated) {
+        return apiV1Error('TOKEN_NOT_FOUND', 'API Token not found.', 404);
+      }
+      writeAuditLog(container.db, {
+        event: AUDIT_EVENTS.TOKEN_ROTATED,
+        tokenId,
+        operation: 'rotate',
+        client: String(c.req.header('User-Agent') || '').slice(0, 80),
+      });
+      return apiV1Success({ token: rotated.token, tokenInfo: rotated.record }, 200);
+    } catch (error) {
+      return tokenErrorResponse(c, error, 'TOKEN_ROTATE_FAILED', 'Failed to rotate API Token.');
+    }
+  });
+
+  // Requirement #12: audit log query endpoint (admin only).
+  app.get('/api/admin/audit-logs', (c) => {
+    const unauthorized = requireAdminAuth(c);
+    if (unauthorized) return unauthorized;
+    const limit = parsePositiveInt(c.req.query('limit'), { defaultValue: 100, min: 1, max: 500 });
+    return apiV1Success({ logs: listAuditLogs(container.db, { limit }) });
   });
 
   app.use('/api/v1/*', async (c, next) => {
@@ -1116,6 +1564,51 @@ function createApp() {
         uploadLimit.message || 'File exceeds selected storage limit.',
         413
       );
+    }
+
+    // Requirement #10: per-token policy enforcement for API uploads.
+    const uploadFolder = normalizeFolderPath(body.folderPath || body.folder || '');
+    const uploadMime = file.type || normalizeMimeType(file.name);
+    const policyError = enforceTokenPolicy(c, {
+      storage: storageMode,
+      mimeType: uploadMime,
+      fileSize,
+      folderPath: uploadFolder,
+    });
+    if (policyError) return policyError;
+
+    // Requirement #11: Idempotency-Key replay support.
+    const idempotencyKey = String(c.req.header('Idempotency-Key') || '').trim().slice(0, 200);
+    const apiTokenRecord = c.get('apiToken');
+    const idemCacheKey = apiTokenRecord && idempotencyKey
+      ? `${apiTokenRecord.id}:${sha256HexBytes(idempotencyKey)}`
+      : null;
+    if (idemCacheKey) {
+      const replay = findIdempotentResponse(container.db, idemCacheKey);
+      if (replay) {
+        return apiV1Success(replay.payload, replay.status, { 'Idempotency-Replayed': 'true' });
+      }
+    }
+
+    // Requirement #11: SHA-256 content deduplication for small uploads.
+    const contentSha256 = sha256HexBytes(Buffer.from(fileBuffer));
+    if (fileSize <= DEDUP_MAX_BYTES) {
+      const existing = findDeduplicatedFile(container.db, container.fileRepo, contentSha256);
+      if (existing) {
+        const dedupPayload = {
+          file: mapV1File(existing),
+          links: {
+            download: toAbsoluteUrl(c, `/file/${encodeURIComponent(existing.id)}`),
+            share: existing.metadata?.shareSlug
+              ? toAbsoluteUrl(c, `/s/${encodeURIComponent(existing.metadata.shareSlug)}`)
+              : null,
+            delete: toAbsoluteUrl(c, `/api/v1/file/${encodeURIComponent(existing.id)}`),
+          },
+          deduplicated: true,
+        };
+        if (idemCacheKey) saveIdempotentResponse(container.db, idemCacheKey, dedupPayload, 200);
+        return apiV1Success(dedupPayload);
+      }
     }
 
     const rawSlug = String(body.slug || url.searchParams.get('slug') || '');
@@ -1186,14 +1679,206 @@ function createApp() {
 
     const shareId = sanitizeSlug(fileRecord.metadata?.shareSlug || '') || fileRecord.id;
 
-    return apiV1Success({
+    const uploadPayload = {
       file: mapV1File(fileRecord),
       links: {
         download: toAbsoluteUrl(c, `/file/${encodeURIComponent(fileRecord.id)}`),
         share: toAbsoluteUrl(c, `/s/${encodeURIComponent(shareId)}`),
         delete: toAbsoluteUrl(c, `/api/v1/file/${encodeURIComponent(fileRecord.id)}`),
       },
+    };
+    if (idemCacheKey) saveIdempotentResponse(container.db, idemCacheKey, uploadPayload, 200);
+    saveShaDedupIndex(container.db, contentSha256, fileRecord);
+
+    return apiV1Success(uploadPayload);
+  });
+
+  // Requirement #4: token introspection endpoint.
+  app.get('/api/v1/me', (c) => {
+    const token = c.get('apiToken');
+    if (!token) {
+      return apiV1Error('TOKEN_INVALID', 'API Token is invalid.', 401);
+    }
+    const { apiTokenRepo } = getServices(c);
+    const record = apiTokenRepo.getById(token.id);
+    const safe = apiTokenRepo.toPublicRecord(record || token, apiTokenRepo.getStat(token.id));
+    return apiV1Success({
+      data: {
+        token: {
+          id: safe.id,
+          name: safe.name,
+          scopes: safe.scopes,
+          expiresAt: safe.expiresAt,
+          enabled: safe.enabled,
+          policies: safe.policies,
+          createdAt: safe.createdAt,
+          lastUsedAt: safe.lastUsedAt,
+          usageCount: safe.usageCount,
+        },
+      },
     });
+  });
+
+  // Requirement #5: capabilities endpoint (public, no token required).
+  app.get('/api/v1/capabilities', (c) => {
+    const readiness = getBootstrapReadiness(container.config);
+    const configuredStorages = Object.entries(readiness.byType)
+      .filter(([, available]) => available)
+      .map(([type]) => type);
+    return apiV1Success({
+      data: {
+        apiVersion: 'v1',
+        upload: true,
+        importFromUrl: true,
+        maxUploadSize: container.config.uploadMaxSize,
+        storages: configuredStorages,
+        imageTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'],
+      },
+    });
+  });
+
+  // Requirement #6: agent-oriented remote URL import with strict SSRF protection.
+  app.post('/api/v1/import', async (c) => {
+    const { uploadService, fileRepo } = getServices(c);
+    const token = c.get('apiToken');
+
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return apiV1Error('BAD_REQUEST', 'Request body must be JSON.', 400);
+    }
+
+    const rawUrl = String(body?.url || '').trim();
+    if (!rawUrl) {
+      return apiV1Error('VALIDATION_ERROR', 'Field "url" is required.', 400);
+    }
+
+    const storage = String(body?.storage || '').trim().toLowerCase();
+    if (storage && !VALID_STORAGES.includes(storage)) {
+      return apiV1Error('INVALID_STORAGE', `Unknown storage backend "${storage}".`, 400, {
+        allowedStorages: VALID_STORAGES,
+      });
+    }
+    const folder = normalizeFolderPath(body?.folder || '');
+
+    const policyError = enforceTokenPolicy(c, {
+      storage,
+      folderPath: folder,
+      checkSourceHost: true,
+    });
+    if (policyError) return policyError;
+
+    const idempotencyKey = String(c.req.header('Idempotency-Key') || '').trim().slice(0, 200);
+    const idemCacheKey = token && idempotencyKey
+      ? `${token.id}:${sha256HexBytes(idempotencyKey)}`
+      : null;
+    if (idemCacheKey) {
+      const replay = findIdempotentResponse(container.db, idemCacheKey);
+      if (replay) {
+        return apiV1Success(replay.payload, replay.status, { 'Idempotency-Replayed': 'true' });
+      }
+    }
+
+    let fetched;
+    try {
+      fetched = await fetchRemoteImport(rawUrl, container.config.uploadMaxSize);
+    } catch (error) {
+      return apiV1Error(
+        error?.code || 'IMPORT_FAILED',
+        error?.message || 'Remote import failed.',
+        error?.status || 502
+      );
+    }
+
+    const policyMimeError = enforceTokenPolicy(c, {
+      storage,
+      mimeType: fetched.mime,
+      fileSize: fetched.bytes.length,
+      folderPath: folder,
+    });
+    if (policyMimeError) return policyMimeError;
+
+    const storageKey = storage || container.config.bootstrapDefaultStorage?.type || 'telegram';
+    const storageLimit = IMPORT_STORAGE_LIMITS[storageKey];
+    if (storageLimit && fetched.bytes.length > storageLimit) {
+      return apiV1Error('FILE_TOO_LARGE', `File exceeds the ${storageKey} storage limit.`, 413);
+    }
+
+    const contentSha256 = sha256HexBytes(fetched.bytes);
+
+    if (body?.deduplicate !== false) {
+      const existing = findDeduplicatedFile(container.db, fileRepo, contentSha256);
+      if (existing) {
+        const dedupPayload = {
+          data: {
+            file: {
+              id: existing.id,
+              name: existing.file_name,
+              size: Number(existing.file_size || 0),
+              mime: existing.mime_type || fetched.mime,
+              sha256: contentSha256,
+              storage: existing.storage_type,
+            },
+            links: {
+              download: toAbsoluteUrl(c, `/file/${encodeURIComponent(existing.id)}`),
+              share: existing.metadata?.shareSlug
+                ? toAbsoluteUrl(c, `/s/${encodeURIComponent(existing.metadata.shareSlug)}`)
+                : null,
+            },
+            source: { url: rawUrl },
+            deduplicated: true,
+          },
+        };
+        if (idemCacheKey) saveIdempotentResponse(container.db, idemCacheKey, dedupPayload, 200);
+        return apiV1Success(dedupPayload);
+      }
+    }
+
+    let result;
+    try {
+      result = await uploadService.uploadFile({
+        fileName: fetched.fileName,
+        mimeType: fetched.mime,
+        fileSize: fetched.bytes.length,
+        buffer: fetched.buffer,
+        storageMode: storage,
+        folderPath: folder,
+      });
+    } catch (error) {
+      const payload = toStorageErrorPayload(error, error?.status || 502);
+      return apiV1Error(
+        payload.code === 'FILE_TOO_LARGE' ? 'FILE_TOO_LARGE' : 'IMPORT_UPLOAD_FAILED',
+        payload.message || error?.message || 'Import upload failed.',
+        payload.code === 'FILE_TOO_LARGE' ? 413 : 502
+      );
+    }
+
+    const fileRecord = result.file;
+    const importPayload = {
+      data: {
+        file: {
+          id: fileRecord.id,
+          name: fileRecord.file_name,
+          size: Number(fileRecord.file_size || fetched.bytes.length),
+          mime: fileRecord.mime_type || fetched.mime,
+          sha256: contentSha256,
+          storage: fileRecord.storage_type,
+        },
+        links: {
+          download: toAbsoluteUrl(c, `/file/${encodeURIComponent(fileRecord.id)}`),
+          share: fileRecord.metadata?.shareSlug
+            ? toAbsoluteUrl(c, `/s/${encodeURIComponent(fileRecord.metadata.shareSlug)}`)
+            : null,
+        },
+        source: { url: rawUrl },
+        deduplicated: false,
+      },
+    };
+    if (idemCacheKey) saveIdempotentResponse(container.db, idemCacheKey, importPayload, 200);
+    saveShaDedupIndex(container.db, contentSha256, fileRecord);
+
+    return apiV1Success(importPayload);
   });
 
   app.get('/api/v1/files', (c) => {

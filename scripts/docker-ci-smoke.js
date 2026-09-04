@@ -40,7 +40,7 @@ function sleepMs(ms) {
 
 function waitForApi(maxAttempts = 60, intervalMs = 2000) {
   for (let i = 0; i < maxAttempts; i += 1) {
-    const health = runComposeExec('wget -qO- http://localhost:8080/api/health');
+    const health = runComposeExec('wget -qO- http://127.0.0.1:8080/api/health');
     if (health.code === 0) {
       return true;
     }
@@ -49,8 +49,24 @@ function waitForApi(maxAttempts = 60, intervalMs = 2000) {
   return false;
 }
 
+function dumpSmokeDiagnostics() {
+  const sections = [
+    ['listeners (netstat -tln / /proc/net/tcp)', 'netstat -tln 2>/dev/null || cat /proc/net/tcp'],
+    ['processes', 'ps w 2>/dev/null || true'],
+    ['wget nginx :8080/api/health', 'wget -qO- -S -T 5 http://127.0.0.1:8080/api/health 2>&1 || true'],
+    ['wget node :8787/api/health', 'wget -qO- -S -T 5 http://127.0.0.1:8787/api/health 2>&1 || true'],
+    ['nginx config test', 'nginx -t 2>&1 || true'],
+  ];
+  for (const [label, script] of sections) {
+    const result = runComposeExec(script);
+    process.stderr.write(`--- smoke diagnostics: ${label} (exit=${result.code}) ---\n`);
+    if (result.stdout) process.stderr.write(result.stdout + '\n');
+    if (result.stderr) process.stderr.write(result.stderr + '\n');
+  }
+}
+
 function readStatus() {
-  const response = runComposeExec('wget -qO- http://localhost:8080/api/status');
+  const response = runComposeExec('wget -qO- http://127.0.0.1:8080/api/status');
   if (response.code !== 0) {
     return { ok: false, error: response.stderr || response.stdout || 'status request failed', data: null };
   }
@@ -79,7 +95,7 @@ function readProfileTypes() {
 }
 
 function readPublicText(pathname) {
-  const response = runComposeExec(`wget -qO- http://localhost:8080${pathname}`);
+  const response = runComposeExec(`wget -qO- http://127.0.0.1:8080${pathname}`);
   if (response.code !== 0) {
     return { ok: false, error: response.stderr || response.stdout || `${pathname} request failed`, text: '' };
   }
@@ -108,6 +124,7 @@ function main() {
   }
 
   if (!waitForApi()) {
+    dumpSmokeDiagnostics();
     process.stderr.write('API did not become ready in time.\n');
     process.exit(2);
     return;

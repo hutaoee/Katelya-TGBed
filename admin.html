@@ -1561,6 +1561,7 @@
       title="API Token 管理"
       :visible.sync="tokenDialogVisible"
       width="860px"
+      append-to-body
       custom-class="token-manager-dialog">
       <div class="token-toolbar">
         <el-button size="mini" type="primary" icon="el-icon-plus" @click="openCreateTokenDialog">新建 Token</el-button>
@@ -1624,8 +1625,15 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="86" align="center">
+        <el-table-column label="操作" width="140" align="center">
           <template slot-scope="scope">
+            <el-button
+              type="text"
+              style="color:#e6a23c"
+              :disabled="Boolean(tokenMutatingMap[scope.row.id])"
+              @click="rotateApiToken(scope.row)">
+              轮换
+            </el-button>
             <el-button
               type="text"
               style="color:#f56c6c"
@@ -1636,6 +1644,19 @@
           </template>
         </el-table-column>
       </el-table>
+      <div style="margin-top:14px;padding:10px 12px;background:#f5f7fa;border-radius:6px;border:1px solid #ebeef5;">
+        <div style="font-size:13px;font-weight:600;color:#606266;margin-bottom:6px;"><i class="fas fa-terminal"></i> 脚本 / Agent 调用示例</div>
+        <pre style="margin:0;font-size:12px;line-height:1.7;color:#476582;background:#fafbfc;border-radius:4px;padding:10px;overflow-x:auto;"># curl 上传（storage 可选 telegram/r2/s3/discord/huggingface/webdav/github）
+curl -H "Authorization: Bearer $KVAULT_API_TOKEN" \
+  -F "file=@./image.png" -F "storage=r2" \
+  {SITE_URL}/api/v1/upload
+
+# 从 URL 导入图片
+curl -X POST "{SITE_URL}/api/v1/import" \
+  -H "Authorization: Bearer $KVAULT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/cat.jpg","storage":"r2"}'</pre>
+      </div>
     </el-dialog>
 
     <el-dialog
@@ -1655,6 +1676,17 @@
             <el-checkbox label="delete"><i class="fas fa-trash-alt"></i> 删除文件/粘贴</el-checkbox>
             <el-checkbox label="paste"><i class="fas fa-file-alt"></i> 创建文本粘贴</el-checkbox>
           </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="存储限制（可选，留空不限制）">
+          <el-select v-model="tokenForm.allowedStorages" multiple clearable placeholder="允许使用的存储后端" style="width:100%;">
+            <el-option v-for="s in storageOptions" :key="s" :label="s" :value="s"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="目录前缀（可选）">
+          <el-input v-model="tokenForm.folderPrefix" maxlength="120" placeholder="例如：agent-uploads，Token 只能写入该目录"></el-input>
+        </el-form-item>
+        <el-form-item label="单文件大小上限（可选，MB）">
+          <el-input-number v-model="tokenForm.maxFileSizeMb" :min="0" :max="1024" :step="5" style="width:100%;"></el-input-number>
         </el-form-item>
         <el-form-item label="过期时间">
           <el-select v-model="tokenForm.expiryPreset" placeholder="请选择过期策略" style="width:100%;">
@@ -1961,7 +1993,11 @@
         scopes: ['upload', 'read'],
         expiryPreset: 'never',
         customExpiresAt: '',
+        allowedStorages: [],
+        folderPrefix: '',
+        maxFileSizeMb: 0,
       },
+      storageOptions: ['telegram', 'r2', 's3', 'discord', 'huggingface', 'webdav', 'github'],
       moveDialogVisible: false,
       moveDialogLoading: false,
       moveDialogFoldersLoading: false,
@@ -2243,6 +2279,9 @@
           scopes: ['upload', 'read'],
           expiryPreset: 'never',
           customExpiresAt: '',
+          allowedStorages: [],
+          folderPrefix: '',
+          maxFileSizeMb: 0,
         };
         this.createTokenDialogVisible = true;
       },
@@ -2301,6 +2340,7 @@
               name,
               scopes,
               expiresAt,
+              policies: this.buildTokenPolicies(),
             }),
           });
           const payload = await response.json();
@@ -2384,6 +2424,50 @@
           this.$message.success('Token 已删除。');
         } catch (error) {
           this.$message.error(error.message || '删除 Token 失败。');
+        } finally {
+          this.$delete(this.tokenMutatingMap, tokenId);
+        }
+      },
+      buildTokenPolicies() {
+        const policies = {};
+        const storages = Array.isArray(this.tokenForm.allowedStorages)
+          ? this.tokenForm.allowedStorages.filter(Boolean)
+          : [];
+        if (storages.length > 0) policies.allowedStorages = storages;
+        const folderPrefix = String(this.tokenForm.folderPrefix || '').trim();
+        if (folderPrefix) policies.folderPrefix = folderPrefix;
+        const maxMb = Number(this.tokenForm.maxFileSizeMb || 0);
+        if (Number.isFinite(maxMb) && maxMb > 0) policies.maxFileSize = Math.round(maxMb * 1024 * 1024);
+        return Object.keys(policies).length > 0 ? policies : null;
+      },
+      async rotateApiToken(token) {
+        const tokenId = token?.id;
+        if (!tokenId) return;
+        try {
+          await this.$confirm(
+            `确认轮换 Token「${token.name}」吗？旧 Secret 将立即失效，新 Secret 只展示一次。`,
+            '轮换确认',
+            { type: 'warning', confirmButtonText: '轮换', cancelButtonText: '取消' }
+          );
+        } catch {
+          return;
+        }
+        this.$set(this.tokenMutatingMap, tokenId, true);
+        try {
+          const response = await fetch(`./api/admin/tokens/${encodeURIComponent(tokenId)}/rotate`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error?.message || payload?.message || '轮换 Token 失败。');
+          }
+          this.createdTokenValue = String(payload.token || '');
+          this.createdTokenCopied = false;
+          this.createdTokenDialogVisible = true;
+          await this.loadApiTokens();
+        } catch (error) {
+          this.$message.error(error.message || '轮换 Token 失败。');
         } finally {
           this.$delete(this.tokenMutatingMap, tokenId);
         }

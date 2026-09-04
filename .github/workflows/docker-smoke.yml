@@ -44,7 +44,7 @@ jobs:
         if: failure()
         run: |
           mkdir -p .artifacts
-          docker compose exec -T k-vault sh -lc "wget -qO- http://localhost:8080/api/status" > .artifacts/api-status.json || true
+          docker compose exec -T k-vault sh -lc "wget -qO- http://127.0.0.1:8080/api/status" > .artifacts/api-status.json || true
           docker compose exec -T k-vault sh -lc "cd /app/server && node -e \"const { createContainer }=require('./lib/container'); const c=createContainer(process.env); console.log(JSON.stringify(c.storageRepo.list(false).map(x=>({id:x.id,type:x.type,name:x.name,enabled:x.enabled,isDefault:x.isDefault})), null, 2));\"" > .artifacts/storage-profiles.json || true
 
       - name: Show runtime logs on failure
